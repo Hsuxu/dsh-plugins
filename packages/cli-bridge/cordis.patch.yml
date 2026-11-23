@@ -1,0 +1,46 @@
+# One row per external agent CLI, each switchable on its own on the Plugins page.
+# A row adds the agent preset whose driver runs every turn of a session in that
+# CLI, and lists the CLI's models in the native model picker; an agent that is
+# not installed or not signed in lists no models. The package row mounts the
+# browser half: brand marks in the model picker and each agent's settings page.
+#
+# Agent rows take `command` (a launch line, e.g. `"/opt/Claude/claude"`),
+# `model` and `permission` (`allow` | `deny`); the settings page edits them and
+# the next CLI launch picks them up without a reload.
+- insert:
+    - id: cli-bridge
+      name: 'dsh-cli-bridge'
+    - id: cli-claude-code
+      name: 'dsh-cli-bridge/claude-code'
+    - id: cli-codex
+      name: 'dsh-cli-bridge/codex'
+    - id: cli-antigravity
+      name: 'dsh-cli-bridge/antigravity'
+    - id: cli-codebuddy
+      name: 'dsh-cli-bridge/codebuddy'
+    # Every delegation target gets its own model-facing tool. The provider is
+    # registered by the agent row above, so sibling load order never strands it.
+    - id: tool-delegate-claude-code
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: cli-claude-code
+        toolName: delegate_claude_code
+        maxDepth: provider-managed
+    - id: tool-delegate-codex
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: cli-codex
+        toolName: delegate_codex
+        maxDepth: provider-managed
+    - id: tool-delegate-antigravity
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: cli-antigravity
+        toolName: delegate_antigravity
+        maxDepth: provider-managed
+    - id: tool-delegate-codebuddy
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: cli-codebuddy
+        toolName: delegate_codebuddy
+        maxDepth: provider-managed
