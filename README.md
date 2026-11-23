@@ -9,7 +9,7 @@ managed as a pnpm monorepo. Each plugin lives in its own package under
 | Package | Directory | Description |
 | --- | --- | --- |
 | `dsh-session-recovery` | `packages/session-recovery` | System maintenance: after a restart, resumes sessions whose last turn failed or never finished. |
-| `dsh-sidebar-session-status` | `packages/sidebar-session-status` | Scaffold placeholder for a sidebar session-status plugin; not implemented yet. |
+| `dsh-sidebar-session-status` | `packages/sidebar-session-status` | UI: pins the active project to the top of the sidebar and tints Session rows by state (active, completed, needs review, failed). |
 
 ## Layout
 

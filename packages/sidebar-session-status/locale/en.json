@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Sidebar session status colors",
+    "description": "Pins the active project to the top of the sidebar and tints Session rows by state: active, completed, waiting for review, or failed.",
+    "detail": "docs/DETAIL.md"
+  }
+}
