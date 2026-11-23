@@ -139,7 +139,7 @@ The session log records one event per stream line and per binding under
 `plugin:dsh-cli-bridge/stream`, `/permission`, `/trace`, and `/acp`. The
 settings page links a diagnostic report (agent/CLI versions, argv, exit code,
 stderr, recent frames) to
-<https://github.com/dsh-cli-bridge/dsh-cli-bridge/issues/new>.
+<https://github.com/Hsuxu/dsh-plugins/issues/new>.
 
 ## Limitations
 

@@ -120,7 +120,7 @@ Bridge → 对应行）会显示 CLI 是否可运行、模型数量以及安装/
 会话日志会在 `plugin:dsh-cli-bridge/stream`、`/permission`、`/trace`、`/acp`
 下记录每条流、权限与绑定事件。设置页可生成诊断报告（Agent/CLI 版本、argv、退出
 码、stderr、最近事件帧）并链接到
-<https://github.com/dsh-cli-bridge/dsh-cli-bridge/issues/new>。
+<https://github.com/Hsuxu/dsh-plugins/issues/new>。
 
 ## 限制
 

@@ -761,7 +761,7 @@ window.__ModuleLoader__.load({
 			}
 		}
 		const HOST_TEXT_AT = "[data-cli-preset-brand]>[class$=\"_itemDesc\"],[class*=\"_turnErrorMessage\"]";
-		const ISSUE_URL = "https://github.com/dsh-cli-bridge/dsh-cli-bridge/issues/new";
+		const ISSUE_URL = "https://github.com/Hsuxu/dsh-plugins/issues/new";
 		function errorActionCopy(zh = isZh()) {
 			return zh ? {
 				copy: "复制 Trace",
