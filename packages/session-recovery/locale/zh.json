@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "会话自动恢复",
+    "description": "DSH 重启后自动恢复失败或异常退出的会话。",
+    "detail": "docs/DETAIL.md"
+  }
+}

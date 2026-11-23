@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Session auto-recovery",
+    "description": "Restores sessions that failed or exited abnormally after DSH restarts.",
+    "detail": "docs/DETAIL.md"
+  }
+}
