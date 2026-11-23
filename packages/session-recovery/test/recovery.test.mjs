@@ -71,6 +71,10 @@ function createContext({ persistence = true } = {}) {
         return agents[sessionId] ? { agent: agents[sessionId] } : { error: { code: 'session/not-found' } }
       },
     },
+    sessionQuery: {
+      listSessions: async () => records,
+      readSession: async (sessionId) => ({ events: logs[sessionId] ?? [] }),
+    },
   }
 
   if (persistence) {

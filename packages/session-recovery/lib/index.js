@@ -12,8 +12,8 @@ import { existsSync } from 'node:fs'
 /** Cordis plugin name, shown in logs and in the plugin inventory. */
 export const name = 'dsh-session-recovery'
 
-/** Services this plugin cannot work without. The controller is resolved lazily. */
-export const inject = ['sessions', 'sessionQuery']
+/** Services this plugin cannot work without. The rest are resolved lazily. */
+export const inject = ['sessions']
 
 /** Prefix that marks a message written by this plugin. */
 const MARKER = '[session-recovery]'
@@ -143,7 +143,13 @@ async function scan(ctx, options, log, signal) {
     return
   }
 
-  const records = await ctx.sessionQuery.listSessions(signal)
+  const query = await waitFor(() => service(ctx, 'sessionQuery'), options.serviceTimeoutMs, signal)
+  if (!query) {
+    log.warn('the session query service is unavailable in this profile; recovery skipped')
+    return
+  }
+
+  const records = await query.listSessions(signal)
   const archived = archivedSessionIds(ctx)
   const candidates = []
 
@@ -178,7 +184,7 @@ async function scan(ctx, options, log, signal) {
 
     let verdict
     try {
-      verdict = await classify(ctx, sessionId, options)
+      verdict = await classify(ctx, sessionId, options, query)
     } catch (error) {
       log.debug(`skip ${sessionId}: cannot read its log (${describeError(error)})`)
       continue
@@ -206,10 +212,11 @@ async function scan(ctx, options, log, signal) {
  * @param ctx - the plugin context.
  * @param sessionId - the session to classify.
  * @param options - normalized options.
+ * @param query - the session query service, used when persistence cannot read.
  * @returns `{ reason }` when the session must be recovered, otherwise `undefined`.
  */
-async function classify(ctx, sessionId, options) {
-  const events = await readEvents(ctx, sessionId)
+async function classify(ctx, sessionId, options, query) {
+  const events = await readEvents(ctx, sessionId, query)
   if (!Array.isArray(events) || events.length === 0) return undefined
 
   let lastStart = -1
@@ -271,9 +278,10 @@ async function classify(ctx, sessionId, options) {
  *
  * @param ctx - the plugin context.
  * @param sessionId - the session to read.
+ * @param query - the session query service, used when persistence cannot read.
  * @returns the persisted events in append order.
  */
-async function readEvents(ctx, sessionId) {
+async function readEvents(ctx, sessionId, query) {
   const persistence = service(ctx, 'sessionPersistence')
 
   if (persistence && typeof persistence.open === 'function') {
@@ -290,7 +298,7 @@ async function readEvents(ctx, sessionId) {
     }
   }
 
-  const snapshot = await ctx.sessionQuery.readSession(sessionId)
+  const snapshot = await query?.readSession?.(sessionId)
   return snapshot?.events ?? []
 }
 
