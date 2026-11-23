@@ -1,7 +1,8 @@
 # dsh-sidebar-session-status
 
 Pins the active project to the top of the sidebar and tints Session rows by
-state: **active**, **completed**, **waiting for review**, and **failed**.
+state: **active**, **completed**, **waiting for review**, **interrupted**, and
+**failed**.
 
 See [docs/DETAIL.md](docs/DETAIL.md) for the state mapping, ordering rules, and
 limitations. The plugin row is `sidebar-session-status`; the package is

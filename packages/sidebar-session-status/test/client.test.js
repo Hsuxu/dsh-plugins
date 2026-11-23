@@ -116,18 +116,18 @@ test('the slot components resolve through the registered modules', () => {
   assert.equal(overlay.props.ctx, ctx)
 })
 
-test('both dictionaries describe the four states', () => {
+test('both dictionaries describe the five states', () => {
   const { DICT } = loadClient().factory(requireStub).__internals
   for (const language of ['en', 'zh']) {
     assert.ok(DICT[language], 'missing dictionary for ' + language)
-    for (const key of ['state.active', 'state.completed', 'state.review', 'state.failed']) {
+    for (const key of ['state.active', 'state.completed', 'state.review', 'state.interrupted', 'state.failed']) {
       assert.equal(typeof DICT[language][key], 'string')
       assert.ok(DICT[language][key].length > 0)
     }
   }
 })
 
-test('deriveSessionState follows archived, review, active, failed, completed, idle', () => {
+test('deriveSessionState follows archived, review, active, failed, interrupted, completed, idle', () => {
   const { deriveSessionState } = loadClient().factory(requireStub).__internals
   const failed = { ...baseSession, projectionValues: { sidebarSessionStatus: { outcome: 'error', turn: 4 } } }
 
@@ -144,6 +144,10 @@ test('deriveSessionState follows archived, review, active, failed, completed, id
   assert.equal(deriveSessionState({ archived: false, hasSession: true, session: { ...baseSession, running: true }, status: undefined }), 'active')
   assert.equal(deriveSessionState({ archived: false, hasSession: true, session: { ...baseSession, running: true }, status: idleStatus }), 'idle')
   assert.equal(deriveSessionState({ archived: false, hasSession: true, session: failed, status: idleStatus }), 'failed')
+  for (const kind of ['interrupted', 'aborted']) {
+    const unfinished = { ...baseSession, projectionValues: { sidebarSessionStatus: { outcome: kind, turn: 5 } } }
+    assert.equal(deriveSessionState({ archived: false, hasSession: true, session: unfinished, status: idleStatus }), 'interrupted')
+  }
   assert.equal(deriveSessionState({
     archived: false,
     hasSession: true,
@@ -153,7 +157,7 @@ test('deriveSessionState follows archived, review, active, failed, completed, id
   assert.equal(deriveSessionState({ archived: false, hasSession: true, session: baseSession, status: idleStatus }), 'idle')
 })
 
-test('SessionStatusDot renders only the four tinted states', () => {
+test('SessionStatusDot renders only the five tinted states', () => {
   const { SessionStatusDot, STATE_ATTRIBUTE } = loadClient().factory(requireStub).__internals
 
   const dot = (session, status) => SessionStatusDot(expose('session-1', session, status))
@@ -161,6 +165,7 @@ test('SessionStatusDot renders only the four tinted states', () => {
   assert.equal(dot({ ...baseSession, running: true }, { ...idleStatus, running: true }).props[STATE_ATTRIBUTE], 'active')
   assert.equal(dot(baseSession, { ...idleStatus, completionUnread: true }).props[STATE_ATTRIBUTE], 'completed')
   assert.equal(dot({ ...baseSession, projectionValues: { sidebarSessionStatus: { outcome: 'error', turn: 1 } } }, idleStatus).props[STATE_ATTRIBUTE], 'failed')
+  assert.equal(dot({ ...baseSession, projectionValues: { sidebarSessionStatus: { outcome: 'interrupted', turn: 2 } } }, idleStatus).props[STATE_ATTRIBUTE], 'interrupted')
   assert.equal(dot(baseSession, { ...idleStatus, pendingInteraction: { kind: 'plan-review' } }).props[STATE_ATTRIBUTE], 'review')
   assert.equal(dot(baseSession, idleStatus), null)
   assert.equal(dot({ ...baseSession, blank: true }, idleStatus), null)

@@ -31,19 +31,32 @@ window.__ModuleLoader__.load({
     /** Attribute carrying the derived row state. */
     const STATE_ATTRIBUTE = 'data-dsh-session-status'
     /** States that render a dot and tint a row. */
-    const RENDERED_STATES = new Set(['active', 'completed', 'review', 'failed'])
+    const RENDERED_STATES = new Set(['active', 'completed', 'review', 'interrupted', 'failed'])
+    /**
+     * Turn outcomes that mean "the turn did not finish on its own". `interrupted`
+     * is a Host-level interruption, `aborted` is a cancelled turn; neither is a
+     * failure, but both are worth surfacing.
+     */
+    const INTERRUPTED_OUTCOMES = new Set(['interrupted', 'aborted'])
+    /**
+     * Orange has no theme token (the palette stops at warn/error), so the
+     * interrupted state carries its own accent that reads on light and dark.
+     */
+    const INTERRUPTED_ACCENT = '#e2811c'
 
     const DICT = {
       zh: {
         'state.active': '活动会话',
         'state.completed': '已完成，尚未查看',
         'state.review': '等待审核',
+        'state.interrupted': '已中断，未完成',
         'state.failed': '上一轮失败',
       },
       en: {
         'state.active': 'Active session',
         'state.completed': 'Completed, not yet viewed',
         'state.review': 'Waiting for review',
+        'state.interrupted': 'Interrupted before finishing',
         'state.failed': 'Last turn failed',
       },
     }
@@ -64,10 +77,12 @@ window.__ModuleLoader__.load({
 .dsh-session-status-dot[data-dsh-session-status="completed"] { --dss-accent: var(--dsw-alias-state-success-primary); }
 .dsh-session-status-dot[data-dsh-session-status="review"] { --dss-accent: var(--dsw-alias-state-warn-primary); }
 .dsh-session-status-dot[data-dsh-session-status="failed"] { --dss-accent: var(--dsw-alias-state-error-primary); }
+.dsh-session-status-dot[data-dsh-session-status="interrupted"] { --dss-accent: ${INTERRUPTED_ACCENT}; }
 [data-sidebar-list-area] [data-row-key^="session:"]:has([${STATE_ATTRIBUTE}="active"]) { --dss-accent: var(--dsw-alias-trajectory-accent); }
 [data-sidebar-list-area] [data-row-key^="session:"]:has([${STATE_ATTRIBUTE}="completed"]) { --dss-accent: var(--dsw-alias-state-success-primary); }
 [data-sidebar-list-area] [data-row-key^="session:"]:has([${STATE_ATTRIBUTE}="review"]) { --dss-accent: var(--dsw-alias-state-warn-primary); }
 [data-sidebar-list-area] [data-row-key^="session:"]:has([${STATE_ATTRIBUTE}="failed"]) { --dss-accent: var(--dsw-alias-state-error-primary); }
+[data-sidebar-list-area] [data-row-key^="session:"]:has([${STATE_ATTRIBUTE}="interrupted"]) { --dss-accent: ${INTERRUPTED_ACCENT}; }
 [data-sidebar-list-area] [data-row-key^="session:"]:has([${STATE_ATTRIBUTE}]) {
   box-shadow: inset 2px 0 0 0 var(--dss-accent);
 }
@@ -80,16 +95,16 @@ window.__ModuleLoader__.load({
      * Derive the row state from Client-visible facts.
      *
      * Precedence mirrors the shipped row exactly where they overlap
-     * (pending interaction, then running) and otherwise adds the two states the
-     * shipped row does not separate: a failed last turn, then the unfinished
-     * completion reminder.
+     * (pending interaction, then running) and otherwise adds the states the
+     * shipped row does not separate: a failed last turn, an interrupted or
+     * cancelled turn, then the unfinished completion reminder.
      *
      * @param {object} input
      * @param {boolean} input.archived Whether the Workspace archive set has this Session.
      * @param {boolean} input.hasSession Whether the catalog still carries the row.
      * @param {object|undefined} input.session `SessionSummary`, when present.
      * @param {object|undefined} input.status `SessionStatus`, when present.
-     * @returns {'archived'|'idle'|'review'|'active'|'failed'|'completed'} Row state.
+     * @returns {'archived'|'idle'|'review'|'active'|'failed'|'interrupted'|'completed'} Row state.
      */
     function deriveSessionState(input) {
       if (input.archived) return 'archived'
@@ -105,6 +120,7 @@ window.__ModuleLoader__.load({
       const values = session.projectionValues
       const outcome = values === undefined || values === null ? undefined : values[PROJECTION_KEY]
       if (outcome !== undefined && outcome !== null && outcome.outcome === 'error') return 'failed'
+      if (outcome !== undefined && outcome !== null && INTERRUPTED_OUTCOMES.has(outcome.outcome)) return 'interrupted'
       if (status !== undefined && status !== null && status.completionUnread === true) return 'completed'
       return 'idle'
     }

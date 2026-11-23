@@ -15,11 +15,12 @@
 | --- | --- | --- |
 | 活动 | 蓝 — `--dsw-alias-trajectory-accent` | `SessionStatus.running`（回退到 `SessionSummary.running`） |
 | 待审核 | 琥珀 — `--dsw-alias-state-warn-primary` | `SessionStatus.pendingInteraction`（等待审批、计划评审或回答） |
+| 已中断 | 橙 — `#e2811c`（主题调色板没有橙色 token，用插件自有色） | 该会话最后一次 `turn/end` 的 `reason.kind` 为 `interrupted` 或 `aborted` |
 | 失败 | 红 — `--dsw-alias-state-error-primary` | 该会话最后一次 `turn/end` 的 `reason.kind === 'error'` |
 | 已完成 | 绿 — `--dsw-alias-state-success-primary` | `SessionStatus.completionUnread`：在别的视图获得焦点时运行结束、尚未查看 |
 | 空闲 / 已归档 | 无 | 不渲染圆点、不着色 |
 
-优先级为 `待审核` → `活动` → `失败` → `已完成` → `空闲`。已归档行保留官方灰化样式；
+优先级为 `待审核` → `活动` → `失败` → `已中断` → `已完成` → `空闲`。已归档行保留官方灰化样式；
 空白会话行（还没有首条提示）保持原样。
 
 ### 为什么需要 Host 投影
@@ -31,8 +32,8 @@
 `projectionValues.sidebarSessionStatus.outcome`。
 
 投影值随列表摘要下发，所以失败行可能在下一次列表更新时变红，而不是失败当帧。
-只有 `error` 算失败；`interrupted`、`aborted`、`blocked`、`max-tokens`、`forked`
-仍走普通空闲/已完成逻辑。
+只有 `error` 算失败；以 `interrupted`（Host 中断）或 `aborted`（用户取消）结束的轮次
+显示橙色；`blocked`、`max-tokens`、`forked` 仍走普通空闲/已完成逻辑。
 
 ## 置顶行为
 

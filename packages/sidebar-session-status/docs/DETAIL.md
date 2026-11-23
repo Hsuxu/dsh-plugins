@@ -18,13 +18,14 @@ Both features only use published extension points: the
 | --- | --- | --- |
 | Active | Blue — `--dsw-alias-trajectory-accent` | `SessionStatus.running` (Host fallback: `SessionSummary.running`) |
 | Waiting for review | Amber — `--dsw-alias-state-warn-primary` | `SessionStatus.pendingInteraction` (approval, plan review, or a question) |
+| Interrupted | Orange — `#e2811c` (plugin-owned; the palette has no orange token) | The last `turn/end` of the Session had `reason.kind` `interrupted` or `aborted` |
 | Failed | Red — `--dsw-alias-state-error-primary` | The last `turn/end` of the Session had `reason.kind === 'error'` |
 | Completed | Green — `--dsw-alias-state-success-primary` | `SessionStatus.completionUnread` — the turn stopped while another view had focus |
 | Idle / archived | None | No dot, no tint |
 
-Precedence is `review` → `active` → `failed` → `completed` → `idle`. Archived rows
-keep the shipped grayed-out look; blank rows (a fresh Session without a first
-prompt) are left alone.
+Precedence is `review` → `active` → `failed` → `interrupted` → `completed` → `idle`.
+Archived rows keep the shipped grayed-out look; blank rows (a fresh Session without
+a first prompt) are left alone.
 
 ### Why a Host projection is needed
 
@@ -37,7 +38,8 @@ row's `projectionValues` (`wire.summary` defaults to `true`). The Client reads
 
 Projection values arrive with list summaries, so a failed row can turn red one
 list update after the failure rather than in the same frame. Only `error` counts
-as a failure: `interrupted`, `aborted`, `blocked`, `max-tokens`, and `forked`
+as a failure. A turn that ends as `interrupted` or `aborted` (Host interruption or
+a cancelled turn) renders orange instead; `blocked`, `max-tokens`, and `forked`
 map to the normal idle/completed logic.
 
 ## Ordering behavior

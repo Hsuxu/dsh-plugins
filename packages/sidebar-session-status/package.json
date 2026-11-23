@@ -2,7 +2,7 @@
   "name": "dsh-sidebar-session-status",
   "version": "0.1.0",
   "private": true,
-  "description": "Pins the active project to the top of the sidebar and tints session rows by state: active, completed, needs review, or failed.",
+  "description": "Pins the active project to the top of the sidebar and tints session rows by state: active, completed, needs review, interrupted, or failed.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

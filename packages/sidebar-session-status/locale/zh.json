@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "侧栏会话状态配色",
-    "description": "把当前活动项目置顶到侧栏 Workspace 列表首位，并按会话状态给会话行着色：活动、已完成、待审核、失败。",
+    "description": "把当前活动项目置顶到侧栏 Workspace 列表首位，并按会话状态给会话行着色：活动、已完成、待审核、已中断、失败。",
     "detail": "docs/DETAIL.zh.md"
   }
 }
