@@ -1,0 +1,95 @@
+{
+  "name": "dsh-cli-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DeepSeek Harness plugin: run Claude Code, Codex, Antigravity CLI, and CodeBuddy sessions in DSH, which provides the UI, commands, and audit trail",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./driver": "./lib/driver.js",
+    "./locale/*.json": "./locale/*.json",
+    "./claude-code": "./lib/agents/claude-code.js",
+    "./claude-code/locale/*.json": "./locale/agents/claude-code/*.json",
+    "./claude-code/icon": "./assets/icons/claude.svg",
+    "./codex": "./lib/agents/codex.js",
+    "./codex/locale/*.json": "./locale/agents/codex/*.json",
+    "./codex/icon": "./assets/icons/codex.svg",
+    "./antigravity": "./lib/agents/antigravity.js",
+    "./antigravity/locale/*.json": "./locale/agents/antigravity/*.json",
+    "./antigravity/icon": "./assets/icons/antigravity.svg",
+    "./codebuddy": "./lib/agents/codebuddy.js",
+    "./codebuddy/locale/*.json": "./locale/agents/codebuddy/*.json",
+    "./codebuddy/icon": "./assets/icons/codebuddy.svg",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "assets",
+    "locale",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-model-selection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-commands",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-skill",
+        "@deepseek-ai/dsh-client-ui-input-trigger"
+      ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "claude-code",
+    "codex",
+    "antigravity-cli",
+    "codebuddy"
+  ],
+  "author": "dsh-cli-bridge contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hsuxu/dsh-plugins.git",
+    "directory": "packages/cli-bridge"
+  },
+  "homepage": "https://github.com/Hsuxu/dsh-plugins/tree/main/packages/cli-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/Hsuxu/dsh-plugins/issues"
+  },
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-agent": "*",
+    "@deepseek-ai/dsh-agent-preset": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-session": "*",
+    "@deepseek-ai/dsh-skill": "*",
+    "@deepseek-ai/dsh-subagent": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "scripts": {
+    "test": "node --import ./test/loader.mjs test/run.mjs",
+    "check": "node --check lib/index.js && node --check lib/agent.js && node --check lib/driver.js && node --check lib/backends.js && node --check lib/catalog.js && node --check lib/models.js && node --check lib/sessions.js && node --check lib/skills.js && node --check lib/subagent.js && node --check lib/turn-writer.js && node --check lib/claude-stream.js && node --check lib/codex-stream.js && node --check lib/antigravity-stream.js && node --check lib/process.js && node --check lib/client.js && node --check lib/agents/claude-code.js && node --check lib/agents/codex.js && node --check lib/agents/antigravity.js && node --check lib/agents/codebuddy.js"
+  },
+  "icon": "./assets/icons/plugin.svg"
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "CLI Bridge",
+    "description": "Chat with Claude Code, Codex, Antigravity and CodeBuddy inside DSH, which shows and records the sessions. This row marks every model in the model selector with its brand."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "CLI Bridge",
+    "description": "在 DSH 中直接与 Claude Code、Codex、Antigravity 和 CodeBuddy 对话，由 DSH 展示并记录会话。本行还会在模型选择器中为每个模型标出品牌图标。"
+  }
+}
