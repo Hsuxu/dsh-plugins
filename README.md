@@ -11,7 +11,7 @@ managed as a pnpm monorepo. Each plugin lives in its own package under
 | Package | Directory | Description |
 | --- | --- | --- |
 | `dsh-session-recovery` | `packages/session-recovery` | System maintenance: after a restart, resumes sessions whose last turn failed or never finished. |
-| `dsh-sidebar-session-status` | `packages/sidebar-session-status` | UI: pins the active project to the top of the sidebar and tints Session rows by state (active, completed, needs review, failed). |
+| `dsh-sidebar-session-status` | `packages/sidebar-session-status` | UI: pins the project of the running Session to the top of the sidebar and tints Session rows by state (active, completed, needs review, interrupted, failed). |
 | `dsh-cli-bridge` | `packages/cli-bridge` | CLI bridge: runs Claude Code, Codex, Antigravity CLI, and CodeBuddy sessions in DSH, with delegation tools and per-agent settings. |
 
 ## Layout
@@ -88,7 +88,7 @@ monorepo 管理。每个插件位于 `packages/` 下独立的包中，可以单�
 | 包名 | 目录 | 说明 |
 | --- | --- | --- |
 | `dsh-session-recovery` | `packages/session-recovery` | 系统维护：DSH 重启后，自动恢复上一轮失败或未完成的会话。 |
-| `dsh-sidebar-session-status` | `packages/sidebar-session-status` | 界面：将当前项目固定在侧边栏顶部，并按状态（进行中、已完成、待复核、失败）为会话行着色。 |
+| `dsh-sidebar-session-status` | `packages/sidebar-session-status` | 界面：将运行中会话所属项目固定在侧边栏顶部，并按状态（进行中、已完成、待复核、中断、失败）为会话行着色。 |
 | `dsh-cli-bridge` | `packages/cli-bridge` | CLI 桥接：在 DSH 中运行 Claude Code、Codex、Antigravity CLI、CodeBuddy 会话，提供委派工具和各 Agent 设置页。 |
 
 ### 目录结构
