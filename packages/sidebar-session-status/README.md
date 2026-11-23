@@ -1,6 +1,7 @@
 # dsh-sidebar-session-status
 
-Pins the active project to the top of the sidebar and tints Session rows by
+Pins the project you are working in — only while its main-view Session is
+running — to the top of the sidebar, and tints Session rows by
 state: **active**, **completed**, **waiting for review**, **interrupted**, and
 **failed**.
 
@@ -37,7 +38,7 @@ mutation:
 
 | Call | Access gate | Purpose |
 | --- | --- | --- |
-| `workspaces.insertBefore(workspaceId, beforeWorkspaceId)` | `workspace/insertBefore` on that Workspace | Move the active project to the front of the Host-persisted Workspace order |
+| `workspaces.insertBefore(workspaceId, beforeWorkspaceId)` | `workspace/insertBefore` on that Workspace | Move the running project to the front of the Host-persisted Workspace order |
 
 The Host half only registers a session projection (`sidebarSessionStatus`, state
 version `1`) that folds `turn/end` into the last turn outcome. It reads the

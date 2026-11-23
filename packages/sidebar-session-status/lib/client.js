@@ -187,13 +187,20 @@ window.__ModuleLoader__.load({
       })
     }
 
-    /** Renderless: reorders the Host Workspace list so the active project leads. */
+    /**
+     * Renderless: leads the Host Workspace list with the project being worked in.
+     *
+     * The move only happens while that project's main-view Session is running,
+     * which means a turn started — sending a new message. Opening a finished
+     * Session therefore never reshuffles the list.
+     */
     function PinActiveWorkspace(props) {
-      const { ctx, workspaceId, firstWorkspaceId, useWorkspaceAccess } = props
+      const { ctx, workspaceId, firstWorkspaceId, running, useWorkspaceAccess } = props
       const allowed = useWorkspaceAccess(workspaceId, REORDER_ACTION)
       const lastAttempt = React.useRef(undefined)
       React.useEffect(() => {
         if (!allowed) return
+        if (running !== true) return
         if (firstWorkspaceId === undefined || firstWorkspaceId === workspaceId) return
         if (ctx === undefined || ctx.workspaces === undefined) return
         const attempt = workspaceId + '|' + firstWorkspaceId
@@ -201,17 +208,27 @@ window.__ModuleLoader__.load({
         lastAttempt.current = attempt
         Promise.resolve(ctx.workspaces.insertBefore(workspaceId, firstWorkspaceId)).catch((error) => {
           if (typeof console !== 'undefined' && typeof console.debug === 'function') {
-            console.debug('[dsh-sidebar-session-status] cannot pin the active project:', error)
+            console.debug('[dsh-sidebar-session-status] cannot pin the running project:', error)
           }
         })
-      }, [allowed, ctx, firstWorkspaceId, workspaceId])
+      }, [allowed, ctx, firstWorkspaceId, running, workspaceId])
       return null
     }
 
-    /** Resolves the active Session's Workspace, then mounts the reorder effect. */
+    /** Resolves the main-view Session's Workspace, then mounts the reorder effect. */
     function PinActiveProject(props) {
-      const { ctx, useSessions, useWorkspaces, useWorkspaceAccess } = props
+      const { ctx, useSessions, useSessionStatus, useWorkspaces, useWorkspaceAccess } = props
       const activeSessionId = useSessions(findMainViewSessionId)
+      const statusRunning = useSessionStatus === undefined
+        ? false
+        : useSessionStatus((snapshot) => {
+          const status = activeSessionId === undefined ? undefined : snapshot.get(activeSessionId)
+          return status !== undefined && status !== null && status.running === true
+        })
+      const summaryRunning = useSessions((state) => {
+        const session = activeSessionId === undefined ? undefined : state.byId[activeSessionId]
+        return session !== undefined && session !== null && session.running === true
+      })
       const activeWorkspaceId = useWorkspaces((state) => workspaceOfSession(state, activeSessionId))
       const firstWorkspaceId = useWorkspaces(
         (state) => (state.items.length > 0 ? state.items[0].workspaceId : undefined),
@@ -221,6 +238,7 @@ window.__ModuleLoader__.load({
         ctx,
         workspaceId: activeWorkspaceId,
         firstWorkspaceId,
+        running: statusRunning === true || summaryRunning === true,
         useWorkspaceAccess,
       })
     }

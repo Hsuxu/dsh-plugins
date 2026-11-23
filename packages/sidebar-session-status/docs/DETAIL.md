@@ -2,10 +2,12 @@
 
 This bundle makes the Session list easier to scan. It does two independent things:
 
-1. **Pins the active project.** The Workspace group that owns the Session open in
-   the main view is moved to the front of the Host-persisted Workspace order.
+1. **Pins the project you are working in.** The Workspace group that owns the
+   Session **running** in the main view is moved to the front of the
+   Host-persisted Workspace order. Opening a finished Session never reorders
+   anything; sending a new message does.
 2. **Tints Session rows by state.** Every Session row gets a small state dot and a
-   2 px accent bar in one of four colors.
+   2 px accent bar in one of five colors.
 
 Both features only use published extension points: the
 `sidebar.session.row.trailing` and `shell.overlay` slots, the documented
@@ -44,14 +46,17 @@ map to the normal idle/completed logic.
 
 ## Ordering behavior
 
-- The active Workspace is the one whose `sessionIds` contain the Session retained
-  by the main view (`retainedBy.mainView > 0`).
+- The Workspace to lead is the one whose `sessionIds` contain the main-view
+  Session (`retainedBy.mainView > 0`) **while that Session is running**. A
+  running Session means a turn started, which in practice means you sent it a
+  new message.
 - Sessions that belong to no Workspace (the ungrouped bucket) never trigger a
   reorder.
 - The reorder is a normal Host mutation: it survives restarts and is visible to
   every window connected to the same Host, exactly like a manual group drag.
-- When the main view switches to a Session in another Workspace, that Workspace
-  moves to the front on the next render.
+- Switching the main view alone does not reorder; the move happens when that
+  Session starts running, or immediately when you open a Session that is already
+  running in the background.
 - Reordering requires the `workspace/insertBefore` permission on that Workspace.
   Without it the effect silently does nothing, including when the Host refuses
   the command.
@@ -66,9 +71,9 @@ writes them, never opens or archives Sessions, and never touches the filesystem.
 
 ## Limitations
 
-- The active-project pin follows the Session open in the main view. A Host with
-  no main-view Session (for example right after start-up) leaves the order as it
-  is until one opens.
+- The pin follows the running Session of the main view. A Host whose main-view
+  Session is idle (for example right after start-up, or after a turn finished)
+  leaves the order as it is until a turn starts.
 - A failed turn is recolored when the next list summary arrives; a Session that
   is currently open may show the failure only in its conversation.
 - Row tinting uses CSS `:has()`. On a browser engine without `:has()` support the

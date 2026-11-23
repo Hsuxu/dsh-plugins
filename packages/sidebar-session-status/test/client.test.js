@@ -211,13 +211,53 @@ test('PinActiveProject resolves the active Workspace before pinning', () => {
   const element = PinActiveProject({
     ctx: {},
     useSessions: (selector) => selector(sessions),
+    useSessionStatus: (selector) => selector(new Map([['s1', { running: true }]])),
     useWorkspaces: (selector) => selector(workspaces),
     useWorkspaceAccess: () => true,
   })
   assert.equal(element.type.name, 'PinActiveWorkspace')
   assert.equal(element.props.workspaceId, 'w2')
   assert.equal(element.props.firstWorkspaceId, 'w1')
+  assert.equal(element.props.running, true)
   assert.equal(element.props.ctx.workspaces, undefined)
+})
+
+test('PinActiveProject only reports running for a Session that runs', () => {
+  const { PinActiveProject } = loadClient().factory(requireStub).__internals
+  const sessions = {
+    ids: ['s1'],
+    byId: { s1: { running: false, retainedBy: { mainView: 1 } } },
+  }
+  const workspaces = { items: [{ workspaceId: 'w2', sessionIds: ['s1'] }] }
+
+  const idle = PinActiveProject({
+    ctx: {},
+    useSessions: (selector) => selector(sessions),
+    useSessionStatus: (selector) => selector(new Map([['s1', { running: false }]])),
+    useWorkspaces: (selector) => selector(workspaces),
+    useWorkspaceAccess: () => true,
+  })
+  assert.equal(idle.props.running, false)
+
+  const running = PinActiveProject({
+    ctx: {},
+    useSessions: (selector) => selector(sessions),
+    useSessionStatus: (selector) => selector(new Map([['s1', { running: true }]])),
+    useWorkspaces: (selector) => selector(workspaces),
+    useWorkspaceAccess: () => true,
+  })
+  assert.equal(running.props.running, true)
+
+  const summaryOnly = PinActiveProject({
+    ctx: {},
+    useSessions: (selector) => selector({
+      ids: ['s1'],
+      byId: { s1: { running: true, retainedBy: { mainView: 1 } } },
+    }),
+    useWorkspaces: (selector) => selector(workspaces),
+    useWorkspaceAccess: () => true,
+  })
+  assert.equal(summaryOnly.props.running, true)
 })
 
 test('PinActiveProject renders nothing while no Session is open', () => {
@@ -231,7 +271,7 @@ test('PinActiveProject renders nothing while no Session is open', () => {
   assert.equal(element, null)
 })
 
-test('PinActiveWorkspace reorders only when allowed and needed', async () => {
+test('PinActiveWorkspace reorders only while running, allowed, and needed', async () => {
   const exported = loadClient().factory(requireStub)
   const { PinActiveWorkspace } = exported.__internals
 
@@ -241,14 +281,17 @@ test('PinActiveWorkspace reorders only when allowed and needed', async () => {
       ctx,
       workspaceId: 'w2',
       firstWorkspaceId: options.firstWorkspaceId,
+      running: options.running,
       useWorkspaceAccess: () => options.allowed,
     })
     await Promise.resolve()
     return calls.reorder
   }
 
-  assert.deepEqual(await run({ allowed: true, firstWorkspaceId: 'w1' }), [['w2', 'w1']])
-  assert.deepEqual(await run({ allowed: true, firstWorkspaceId: 'w2' }), [])
-  assert.deepEqual(await run({ allowed: true, firstWorkspaceId: undefined }), [])
-  assert.deepEqual(await run({ allowed: false, firstWorkspaceId: 'w1' }), [])
+  assert.deepEqual(await run({ allowed: true, running: true, firstWorkspaceId: 'w1' }), [['w2', 'w1']])
+  assert.deepEqual(await run({ allowed: true, running: true, firstWorkspaceId: 'w2' }), [])
+  assert.deepEqual(await run({ allowed: true, running: true, firstWorkspaceId: undefined }), [])
+  assert.deepEqual(await run({ allowed: false, running: true, firstWorkspaceId: 'w1' }), [])
+  assert.deepEqual(await run({ allowed: true, running: false, firstWorkspaceId: 'w1' }), [])
+  assert.deepEqual(await run({ allowed: true, running: undefined, firstWorkspaceId: 'w1' }), [])
 })
