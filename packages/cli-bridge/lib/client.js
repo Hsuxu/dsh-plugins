@@ -470,9 +470,6 @@ window.__ModuleLoader__.load({
 			const label = backend === "codex" ? "Codex" : "Claude Code";
 			const data = state.data;
 			const windows = Array.isArray(data?.windows) ? data.windows : [];
-			const details = typeof data?.text === "string"
-				? data.text.split(/\r?\n/).filter((line) => /^(Plan|Tokens|Usage|Cache|Credits):/.test(line))
-				: [];
 			const updated = state.at
 				? Date.now() - state.at < 60_000
 					? (zh ? "更新于 刚刚" : "updated just now")
@@ -511,10 +508,7 @@ window.__ModuleLoader__.load({
 									h("span", { className: "cli-quota-window-value" }, `${remaining}%`)),
 								h("div", { className: "cli-quota-bar" },
 									h("div", { className: "cli-quota-fill", style: { width: `${remaining}%` } })));
-						}) : h("div", { className: "cli-quota-note" }, String(data.text ?? "")),
-						details.length > 0 && windows.length > 0
-							? h("div", { className: "cli-quota-details" }, details.map((line, index) => h("span", { className: "cli-quota-detail", key: index }, line)))
-							: null) :
+						}) : h("div", { className: "cli-quota-note" }, String(data.text ?? ""))) :
 					h("div", { className: "cli-quota-card" },
 						h("div", { className: "cli-quota-card-head" },
 							h("span", null, zh ? "系统默认" : "Default"),
@@ -599,8 +593,6 @@ window.__ModuleLoader__.load({
 			".cli-quota-fill{height:100%;border-radius:inherit;background:var(--dsw-alias-state-success-primary);transition:width .2s}",
 			".cli-quota-window[data-tone=mid] .cli-quota-fill{background:var(--dsw-alias-state-warning-primary,#d97706)}",
 			".cli-quota-window[data-tone=low] .cli-quota-fill{background:var(--dsw-alias-state-error-primary)}",
-			".cli-quota-details{display:flex;flex-direction:column;gap:2px;padding-top:6px;border-top:.5px solid var(--dsw-alias-border-l2)}",
-			".cli-quota-detail{font-size:10px;line-height:15px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;text-overflow:ellipsis;overflow:hidden}",
 			".cli-quota-note{margin:0;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary);white-space:pre-wrap}",
 			".cli-quota-note[data-error=true]{color:var(--dsw-alias-state-error-primary)}",
 			".cli-quota-loading{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}"
