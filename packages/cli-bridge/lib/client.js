@@ -402,7 +402,39 @@ window.__ModuleLoader__.load({
 		}
 
 		const QUOTA_BACKENDS = new Set(["claude-code", "codex"]);
-		/** Compact quota bar above the composer while a CLI Claude Code/Codex session is open. */
+		function quotaWindowName(label, zh) {
+			if (!zh) return label;
+			if (/5-hour/i.test(label)) return "5h";
+			if (/Weekly/i.test(label)) return "每周";
+			if (/Monthly/i.test(label)) return "每月";
+			return label;
+		}
+		function quotaResetText(resetsAt, zh) {
+			const seconds = typeof resetsAt === "number" ? resetsAt : Date.parse(resetsAt) / 1000;
+			if (!Number.isFinite(seconds)) return "";
+			const minutes = Math.max(0, Math.ceil((seconds * 1000 - Date.now()) / 60000));
+			if (minutes === 0) return zh ? "即将重置" : "resets soon";
+			const hours = Math.floor(minutes / 60);
+			const days = Math.floor(hours / 24);
+			if (zh) {
+				if (days > 0) return `${days} 天${hours % 24 ? ` ${hours % 24} 小时` : ""}后重置`;
+				if (hours > 0) return `${hours} 小时${minutes % 60 ? ` ${minutes % 60} 分钟` : ""}后重置`;
+				return `${minutes} 分钟后重置`;
+			}
+			if (days > 0) return `resets in ${days}d${hours % 24 ? ` ${hours % 24}h` : ""}`;
+			if (hours > 0) return `resets in ${hours}h${minutes % 60 ? ` ${minutes % 60}m` : ""}`;
+			return `resets in ${minutes}m`;
+		}
+		function quotaRemaining(usedPercent) {
+			const remaining = 100 - (typeof usedPercent === "number" && Number.isFinite(usedPercent) ? usedPercent : 0);
+			return Math.max(0, Math.min(100, Math.round(remaining * 10) / 10));
+		}
+		function quotaTone(remaining) {
+			if (remaining <= 15) return "low";
+			if (remaining <= 50) return "mid";
+			return "high";
+		}
+		/** Quota card above the composer while a CLI Claude Code/Codex session is open. */
 		function QuotaDock({ useProjection }) {
 			const preset = useProjection("agentPreset");
 			const backend = typeof preset === "string" && preset.startsWith("cli-") ? preset.slice("cli-".length) : "";
@@ -421,7 +453,7 @@ window.__ModuleLoader__.load({
 						const data = await response.json().catch(() => void 0);
 						if (!live) return;
 						if (!response.ok || !data) setState({ phase: "failed", message: isZh() ? "额度查询失败" : "Quota query failed" });
-						else if (data.ok) setState({ phase: "ready", text: data.text });
+						else if (data.ok) setState({ phase: "ready", data, at: Date.now() });
 						else setState({ phase: "failed", message: data.error || (isZh() ? "额度查询失败" : "Quota query failed") });
 					} catch (error) {
 						if (!live || error?.name === "AbortError") return;
@@ -436,18 +468,58 @@ window.__ModuleLoader__.load({
 			if (!supported) return null;
 			const zh = isZh();
 			const label = backend === "codex" ? "Codex" : "Claude Code";
-			return h("div", { className: "cli-quota-dock", "data-cli-quota": "dock" },
-				h("div", { className: "cli-quota-dock-head" },
-					h("span", { className: "cli-quota-dock-label" }, zh ? `${label} 额度` : `${label} quota`),
-					h("button", {
-						type: "button",
-						className: "cli-quota-dock-refresh",
-						disabled: state.phase === "loading",
-						onClick: () => setNonce((value) => value + 1)
-					}, zh ? "刷新" : "Refresh")),
-				state.phase === "loading" ? h("span", { className: "cli-quota-dock-hint" }, zh ? "查询中…" : "Loading…") :
-					state.phase === "ready" ? h("pre", { className: "cli-quota-dock-text" }, state.text) :
-						h("span", { className: "cli-quota-dock-hint" }, state.message));
+			const data = state.data;
+			const windows = Array.isArray(data?.windows) ? data.windows : [];
+			const details = typeof data?.text === "string"
+				? data.text.split(/\r?\n/).filter((line) => /^(Plan|Tokens|Usage|Cache|Credits):/.test(line))
+				: [];
+			const updated = state.at
+				? Date.now() - state.at < 60_000
+					? (zh ? "更新于 刚刚" : "updated just now")
+					: `${zh ? "更新于" : "updated"} ${new Date(state.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+				: "";
+			const refresh = h("button", {
+				type: "button",
+				className: "cli-quota-refresh",
+				disabled: state.phase === "loading",
+				title: zh ? "刷新额度" : "Refresh quota",
+				"aria-label": zh ? "刷新额度" : "Refresh quota",
+				onClick: () => setNonce((value) => value + 1)
+			}, zh ? "刷新" : "Refresh");
+			return h("div", { className: "cli-quota-dock", "data-cli-quota": "dock", "data-backend": backend },
+				h("div", { className: "cli-quota-head" },
+					h("div", { className: "cli-quota-brand" },
+						h("span", { className: "cli-quota-mark", "aria-hidden": "true" }),
+						h("span", { className: "cli-quota-title" }, label)),
+					h("div", { className: "cli-quota-meta" }, updated ? h("span", { className: "cli-quota-updated" }, updated) : null, refresh)),
+				state.phase === "loading" ? h("div", { className: "cli-quota-card" },
+					h("div", { className: "cli-quota-card-head" },
+						h("span", null, zh ? "系统默认" : "Default"),
+						h("span", null, zh ? "剩余" : "Remaining")),
+					h("div", { className: "cli-quota-loading" }, zh ? "正在读取额度…" : "Reading quota…")) :
+					state.phase === "ready" ? h("div", { className: "cli-quota-card" },
+						h("div", { className: "cli-quota-card-head" },
+							h("span", null, zh ? "系统默认" : "Default"),
+							h("span", null, zh ? "剩余" : "Remaining")),
+						windows.length > 0 ? windows.map((window, index) => {
+							const remaining = quotaRemaining(window.usedPercent);
+							const tone = quotaTone(remaining);
+							return h("div", { className: "cli-quota-window", "data-tone": tone, key: `${window.label ?? "window"}-${index}` },
+								h("div", { className: "cli-quota-window-head" },
+									h("span", { className: "cli-quota-window-name" }, quotaWindowName(window.label ?? "Window", zh)),
+									h("span", { className: "cli-quota-window-reset" }, quotaResetText(window.resetsAt, zh)),
+									h("span", { className: "cli-quota-window-value" }, `${remaining}%`)),
+								h("div", { className: "cli-quota-bar" },
+									h("div", { className: "cli-quota-fill", style: { width: `${remaining}%` } })));
+						}) : h("div", { className: "cli-quota-note" }, String(data.text ?? "")),
+						details.length > 0 && windows.length > 0
+							? h("div", { className: "cli-quota-details" }, details.map((line, index) => h("span", { className: "cli-quota-detail", key: index }, line)))
+							: null) :
+					h("div", { className: "cli-quota-card" },
+						h("div", { className: "cli-quota-card-head" },
+							h("span", null, zh ? "系统默认" : "Default"),
+							h("span", null, zh ? "剩余" : "Remaining")),
+						h("div", { className: "cli-quota-note", "data-error": true }, state.message)));
 		}
 
 		function makeAgentPage(agent) {
@@ -505,14 +577,33 @@ window.__ModuleLoader__.load({
 			".cli-agent-field{display:flex;flex-direction:column;gap:6px;padding:12px 0;border-top:.5px solid var(--dsw-alias-border-l2)}",
 			".cli-quota{display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:.5px solid var(--dsw-alias-border-l2)}",
 			".cli-quota-text{margin:0;white-space:pre-wrap;font-family:var(--dsw-font-mono);font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary)}",
-			".cli-quota-dock{box-sizing:border-box;width:100%;max-width:calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));margin:0 auto 8px;padding:8px 10px;border-radius:var(--dsw-radius-md);background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-panel);display:flex;flex-direction:column;gap:4px}",
-			".cli-quota-dock-head{display:flex;align-items:center;gap:8px}",
-			".cli-quota-dock-label{flex:1;min-width:0;font-size:12px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary)}",
-			".cli-quota-dock-refresh{cursor:pointer;border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;padding:2px 4px;border-radius:var(--dsw-radius-sm)}",
-			".cli-quota-dock-refresh:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}",
-			".cli-quota-dock-refresh:disabled{opacity:.4;cursor:default}",
-			".cli-quota-dock-text{margin:0;max-height:96px;overflow:auto;white-space:pre-wrap;font-family:var(--dsw-font-mono);font-size:11px;line-height:1.55;color:var(--dsw-alias-label-secondary)}",
-			".cli-quota-dock-hint{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}"
+			".cli-quota-dock{box-sizing:border-box;width:100%;max-width:calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));margin:0 auto 8px;display:flex;flex-direction:column;gap:6px}",
+			".cli-quota-head{display:flex;align-items:center;gap:8px;padding:0 4px}",
+			".cli-quota-brand{display:flex;align-items:center;gap:6px;min-width:0;flex:1}",
+			".cli-quota-mark{width:8px;height:8px;border-radius:2px;background:var(--dsw-alias-state-success-primary);flex:none}",
+			".cli-quota-dock[data-backend=claude-code] .cli-quota-mark{background:#d97757}",
+			".cli-quota-title{min-width:0;font-size:12px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}",
+			".cli-quota-meta{display:flex;align-items:center;gap:6px;flex:none}",
+			".cli-quota-updated{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}",
+			".cli-quota-refresh{cursor:pointer;border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;padding:2px 4px;border-radius:var(--dsw-radius-sm)}",
+			".cli-quota-refresh:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}",
+			".cli-quota-refresh:disabled{opacity:.4;cursor:default}",
+			".cli-quota-card{box-sizing:border-box;background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-panel);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}",
+			".cli-quota-card-head{display:flex;justify-content:space-between;align-items:center;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px}",
+			".cli-quota-window{display:flex;flex-direction:column;gap:4px}",
+			".cli-quota-window-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:8px}",
+			".cli-quota-window-name{font-size:12px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary)}",
+			".cli-quota-window-reset{min-width:0;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}",
+			".cli-quota-window-value{font-size:13px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}",
+			".cli-quota-bar{height:6px;border-radius:999px;background:var(--dsw-alias-interactive-bg-hover-solid);overflow:hidden}",
+			".cli-quota-fill{height:100%;border-radius:inherit;background:var(--dsw-alias-state-success-primary);transition:width .2s}",
+			".cli-quota-window[data-tone=mid] .cli-quota-fill{background:var(--dsw-alias-state-warning-primary,#d97706)}",
+			".cli-quota-window[data-tone=low] .cli-quota-fill{background:var(--dsw-alias-state-error-primary)}",
+			".cli-quota-details{display:flex;flex-direction:column;gap:2px;padding-top:6px;border-top:.5px solid var(--dsw-alias-border-l2)}",
+			".cli-quota-detail{font-size:10px;line-height:15px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;text-overflow:ellipsis;overflow:hidden}",
+			".cli-quota-note{margin:0;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary);white-space:pre-wrap}",
+			".cli-quota-note[data-error=true]{color:var(--dsw-alias-state-error-primary)}",
+			".cli-quota-loading{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}"
 		].join("\n");
 		//#endregion
 		//#region mode menu marks
