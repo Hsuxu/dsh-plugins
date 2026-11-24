@@ -95,14 +95,16 @@ the document and update it:
 
 ## 6. Branch Workflow
 
-**Never commit directly to `main`.** `main` is the integration and release
-branch; every change starts on a new branch cut from it.
+**All development branches are cut from `develop` and merged back into
+`develop` through a pull request. `main` is the release branch: it only
+receives released code and is marked with a version tag. Never commit
+directly to `develop` or `main`.**
 
-- Sync `main` before branching:
+- Sync `develop` before branching:
 
   ```
   git fetch origin
-  git switch main && git pull --ff-only
+  git switch develop && git pull --ff-only
   ```
 
 - Name the branch by change type, with a short kebab-case slug:
@@ -115,12 +117,22 @@ branch; every change starts on a new branch cut from it.
   | `chore/` | Build, CI, tooling, dependencies |
   | `refactor/` | Behavior-preserving code change |
   | `test/` | Tests only |
+  | `release/` | Release preparation merged into `main` |
 
   Example: `git switch -c fix/session-recovery-idle-resume`.
 
-- Merge back into `main` through a pull request. CI
+- Merge development branches into `develop` through a pull request. CI
   (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile` and
   `pnpm check` on `main` and on every pull request.
+
+- Release by merging `develop` into `main` and tagging that commit on `main`:
+
+  ```
+  git switch main && git pull --ff-only
+  git merge --no-ff origin/develop
+  git tag -a vX.Y.Z -m "vX.Y.Z"
+  git push origin main --tags
+  ```
 
 - After the pull request merges successfully, delete the source branch. Remove
   its worktree first if it has one, then delete both the remote and local
