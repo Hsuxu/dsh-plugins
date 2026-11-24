@@ -1,6 +1,6 @@
 {
   "name": "dsh-cli-bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "DeepSeek Harness plugin: run Claude Code, Codex, Antigravity CLI, and CodeBuddy sessions in DSH, which provides the UI, commands, and audit trail",
   "type": "module",
@@ -89,7 +89,7 @@
   },
   "scripts": {
     "test": "node --import ./test/loader.mjs test/run.mjs",
-    "check": "node --check lib/index.js && node --check lib/agent.js && node --check lib/driver.js && node --check lib/backends.js && node --check lib/catalog.js && node --check lib/models.js && node --check lib/sessions.js && node --check lib/skills.js && node --check lib/subagent.js && node --check lib/turn-writer.js && node --check lib/claude-stream.js && node --check lib/codex-stream.js && node --check lib/antigravity-stream.js && node --check lib/process.js && node --check lib/client.js && node --check lib/agents/claude-code.js && node --check lib/agents/codex.js && node --check lib/agents/antigravity.js && node --check lib/agents/codebuddy.js"
+    "check": "node --check lib/index.js && node --check lib/agent.js && node --check lib/driver.js && node --check lib/backends.js && node --check lib/catalog.js && node --check lib/models.js && node --check lib/sessions.js && node --check lib/skills.js && node --check lib/subagent.js && node --check lib/turn-writer.js && node --check lib/claude-stream.js && node --check lib/codex-stream.js && node --check lib/antigravity-stream.js && node --check lib/codex-app.js && node --check lib/codex-plan-stream.js && node --check lib/plan.js && node --check lib/process.js && node --check lib/client.js && node --check lib/agents/claude-code.js && node --check lib/agents/codex.js && node --check lib/agents/antigravity.js && node --check lib/agents/codebuddy.js"
   },
   "icon": "./assets/icons/plugin.svg"
 }

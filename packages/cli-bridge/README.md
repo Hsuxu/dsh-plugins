@@ -61,6 +61,11 @@ The composer forwards commands to the running CLI:
   Codex is read through `codex app-server` (`account/rateLimits/read`); Claude
   Code reads the OAuth usage endpoint. The settings page shows the same snapshot
   with a refresh button.
+- `/codex-plan <task>` — run the task through Codex's native Plan collaboration
+  mode (`codex app-server`, read-only sandbox). The plan appears as a transcript
+  card and in the plan bar above the composer. `/codex-plan approve` sends the
+  approved plan back as the implementation turn; `/codex-plan off` exits plan
+  mode. Plan state is recorded in the session log and survives a DSH restart.
 - **Verified native commands** — only commands that run in the CLI's print mode
   are registered (see the next section). Model choice stays in the DSH model
   picker, so `/model` is DSH's own command.
@@ -84,6 +89,7 @@ else is still reachable through `/agent`.
 | `/resume` | plugin | plugin | plugin | plugin |
 | `/agent <line>` | plugin | plugin | plugin | plugin |
 | `/quota` | subscription usage | subscription usage | — | — |
+| `/codex-plan` | — | native Plan mode | — | — |
 | `/cli-compact` | forwarded (verified) | — | forwarded (documented) | forwarded (documented) |
 | `/config`, `/usage`, `/context`, `/cost` | forwarded (verified) | — | `/config`, `/usage`, `/context` documented | `/config`, `/context`, `/cost` documented |
 | `/status`, `/skills`, `/permissions`, `/help` | **not available** in print mode | no slash-command layer in `codex exec` | documented print expansion | documented print expansion |
@@ -97,7 +103,10 @@ Details:
   `/skills`, `/permissions`, and `/help` answer "isn't available in this
   environment".
 - **Codex**: `exec` has no slash-command layer, so no native commands are
-  registered. Skills still work because the plugin injects their content.
+  registered. `/codex-plan` is separate: it starts a `codex app-server` thread
+  with `collaborationMode: { mode: "plan" }` and a read-only sandbox, streams
+  the plan item back, and stores it in the `cliPlan` session projection.
+  Skills still work because the plugin injects their content.
 - **Antigravity**: the CLI documents slash-command expansion in print mode, but
   this plugin does not bundle `agy`; that list is documented rather than
   verified.

@@ -227,7 +227,17 @@ window.__ModuleLoader__.load({
 			quotaHint: "Read from the signed-in account without starting a model turn.",
 			quotaRefresh: "Refresh",
 			quotaLoading: "Reading quota…",
-			quotaFailed: "Could not read quota"
+			quotaFailed: "Could not read quota",
+			planKicker: "Codex Plan",
+			planPending: "Codex is planning…",
+			planReady: "Plan ready for review",
+			planApprove: "Approve & implement",
+			planKeep: "Keep planning",
+			planExit: "Exit plan",
+			planEmpty: "No plan yet.",
+			planFailed: "Codex Plan failed",
+			planRunning: "Planning…",
+			planDone: "Plan"
 		};
 		const zh = {
 			summary: "{label} 的启动设置与登录状态。",
@@ -262,7 +272,17 @@ window.__ModuleLoader__.load({
 			quotaHint: "直接读取已登录账号的额度，不会启动模型回合。",
 			quotaRefresh: "刷新",
 			quotaLoading: "正在读取额度…",
-			quotaFailed: "无法读取额度"
+			quotaFailed: "无法读取额度",
+			planKicker: "Codex 规划",
+			planPending: "Codex 正在规划…",
+			planReady: "规划已就绪，等待确认",
+			planApprove: "批准并实施",
+			planKeep: "继续规划",
+			planExit: "退出规划",
+			planEmpty: "暂无规划。",
+			planFailed: "Codex 规划失败",
+			planRunning: "正在规划…",
+			planDone: "规划"
 		};
 		/** Whether a launch line has balanced quotes; lib/backends.js parses it on the Host. */
 		function commandIsValid(line) {
@@ -401,6 +421,208 @@ window.__ModuleLoader__.load({
 						h("p", { className: "cli-agent-hint" }, state.message));
 		}
 
+		const QUOTA_BACKENDS = new Set(["claude-code", "codex"]);
+		function quotaWindowName(label, zh) {
+			if (!zh) return label;
+			if (/5-hour/i.test(label)) return "5h";
+			if (/Weekly/i.test(label)) return "每周";
+			if (/Monthly/i.test(label)) return "每月";
+			return label;
+		}
+		function quotaResetText(resetsAt, zh) {
+			const seconds = typeof resetsAt === "number" ? resetsAt : Date.parse(resetsAt) / 1000;
+			if (!Number.isFinite(seconds)) return "";
+			const minutes = Math.max(0, Math.ceil((seconds * 1000 - Date.now()) / 60000));
+			if (minutes === 0) return zh ? "即将重置" : "resets soon";
+			const hours = Math.floor(minutes / 60);
+			const days = Math.floor(hours / 24);
+			if (zh) {
+				if (days > 0) return `${days} 天${hours % 24 ? ` ${hours % 24} 小时` : ""}后重置`;
+				if (hours > 0) return `${hours} 小时${minutes % 60 ? ` ${minutes % 60} 分钟` : ""}后重置`;
+				return `${minutes} 分钟后重置`;
+			}
+			if (days > 0) return `resets in ${days}d${hours % 24 ? ` ${hours % 24}h` : ""}`;
+			if (hours > 0) return `resets in ${hours}h${minutes % 60 ? ` ${minutes % 60}m` : ""}`;
+			return `resets in ${minutes}m`;
+		}
+		function quotaRemaining(usedPercent) {
+			const remaining = 100 - (typeof usedPercent === "number" && Number.isFinite(usedPercent) ? usedPercent : 0);
+			return Math.max(0, Math.min(100, Math.round(remaining * 10) / 10));
+		}
+		function quotaTone(remaining) {
+			if (remaining <= 15) return "low";
+			if (remaining <= 50) return "mid";
+			return "high";
+		}
+		/** Quota card above the composer while a CLI Claude Code/Codex session is open. */
+		function QuotaDock({ useProjection }) {
+			const preset = useProjection("agentPreset");
+			const backend = typeof preset === "string" && preset.startsWith("cli-") ? preset.slice("cli-".length) : "";
+			const supported = QUOTA_BACKENDS.has(backend);
+			const [state, setState] = React.useState({ phase: "loading" });
+			const [nonce, setNonce] = React.useState(0);
+			React.useEffect(() => {
+				if (!supported) return void 0;
+				const controller = new AbortController();
+				let live = true;
+				setState({ phase: "loading" });
+				(async () => {
+					try {
+						const query = `backend=${encodeURIComponent(backend)}${nonce ? "&refresh=1" : ""}`;
+						const response = await fetch(`/api/cli-bridge/quota?${query}`, { signal: controller.signal });
+						const data = await response.json().catch(() => void 0);
+						if (!live) return;
+						if (!response.ok || !data) setState({ phase: "failed", message: isZh() ? "额度查询失败" : "Quota query failed" });
+						else if (data.ok) setState({ phase: "ready", data, at: Date.now() });
+						else setState({ phase: "failed", message: data.error || (isZh() ? "额度查询失败" : "Quota query failed") });
+					} catch (error) {
+						if (!live || error?.name === "AbortError") return;
+						setState({ phase: "failed", message: error instanceof Error ? error.message : String(error) });
+					}
+				})();
+				return () => {
+					live = false;
+					controller.abort();
+				};
+			}, [backend, nonce, supported]);
+			if (!supported) return null;
+			const zh = isZh();
+			const label = backend === "codex" ? "Codex" : "Claude Code";
+			const data = state.data;
+			const windows = Array.isArray(data?.windows) ? data.windows : [];
+			const updated = state.at
+				? Date.now() - state.at < 60_000
+					? (zh ? "更新于 刚刚" : "updated just now")
+					: `${zh ? "更新于" : "updated"} ${new Date(state.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+				: "";
+			const refresh = h("button", {
+				type: "button",
+				className: "cli-quota-refresh",
+				disabled: state.phase === "loading",
+				title: zh ? "刷新额度" : "Refresh quota",
+				"aria-label": zh ? "刷新额度" : "Refresh quota",
+				onClick: () => setNonce((value) => value + 1)
+			}, zh ? "刷新" : "Refresh");
+			return h("div", { className: "cli-quota-dock", "data-cli-quota": "dock", "data-backend": backend },
+				h("div", { className: "cli-quota-head" },
+					h("div", { className: "cli-quota-brand" },
+						h("span", { className: "cli-quota-mark", "aria-hidden": "true" }),
+						h("span", { className: "cli-quota-title" }, label)),
+					h("div", { className: "cli-quota-meta" }, updated ? h("span", { className: "cli-quota-updated" }, updated) : null, refresh)),
+				state.phase === "loading" ? h("div", { className: "cli-quota-card" },
+					h("div", { className: "cli-quota-card-head" },
+						h("span", null, zh ? "系统默认" : "Default"),
+						h("span", null, zh ? "剩余" : "Remaining")),
+					h("div", { className: "cli-quota-loading" }, zh ? "正在读取额度…" : "Reading quota…")) :
+					state.phase === "ready" ? h("div", { className: "cli-quota-card" },
+						h("div", { className: "cli-quota-card-head" },
+							h("span", null, zh ? "系统默认" : "Default"),
+							h("span", null, zh ? "剩余" : "Remaining")),
+						windows.length > 0 ? windows.map((window, index) => {
+							const remaining = quotaRemaining(window.usedPercent);
+							const tone = quotaTone(remaining);
+							return h("div", { className: "cli-quota-window", "data-tone": tone, key: `${window.label ?? "window"}-${index}` },
+								h("div", { className: "cli-quota-window-head" },
+									h("span", { className: "cli-quota-window-name" }, quotaWindowName(window.label ?? "Window", zh)),
+									h("span", { className: "cli-quota-window-reset" }, quotaResetText(window.resetsAt, zh)),
+									h("span", { className: "cli-quota-window-value" }, `${remaining}%`)),
+								h("div", { className: "cli-quota-bar" },
+									h("div", { className: "cli-quota-fill", style: { width: `${remaining}%` } })));
+						}) : h("div", { className: "cli-quota-note" }, String(data.text ?? ""))) :
+					h("div", { className: "cli-quota-card" },
+						h("div", { className: "cli-quota-card-head" },
+							h("span", null, zh ? "系统默认" : "Default"),
+							h("span", null, zh ? "剩余" : "Remaining")),
+						h("div", { className: "cli-quota-note", "data-error": true }, state.message)));
+		}
+
+		function planCopy(zh) {
+			return zh ? {
+				kicker: "Codex 规划",
+				pending: "Codex 正在规划…",
+				ready: "规划已就绪，等待确认",
+				approve: "批准并实施",
+				keep: "继续规划",
+				exit: "退出规划",
+				empty: "暂无规划。",
+				failed: "Codex 规划失败",
+				running: "正在规划…",
+				done: "规划"
+			} : {
+				kicker: "Codex Plan",
+				pending: "Codex is planning…",
+				ready: "Plan ready for review",
+				approve: "Approve & implement",
+				keep: "Keep planning",
+				exit: "Exit plan",
+				empty: "No plan yet.",
+				failed: "Codex Plan failed",
+				running: "Planning…",
+				done: "Plan"
+			};
+		}
+		/** Plan bar above the composer while Codex is planning or a plan waits for review. */
+		function PlanDock({ useProjection, onApprove, onExit, onKeep }) {
+			const preset = useProjection("agentPreset");
+			const plan = useProjection("cliPlan");
+			const backend = typeof preset === "string" && preset.startsWith("cli-") ? preset.slice("cli-".length) : "";
+			const [busy, setBusy] = React.useState(false);
+			if (backend !== "codex" || !plan || !(plan.active || plan.pending || plan.reviewPending)) return null;
+			const copy = planCopy(isZh());
+			const status = plan.pending ? copy.pending : plan.reviewPending ? copy.ready : copy.empty;
+			const run = (fn) => {
+				if (busy) return;
+				setBusy(true);
+				Promise.resolve(typeof fn === "function" ? fn() : null).finally(() => setBusy(false));
+			};
+			return h("div", {
+				className: "cli-plan-dock",
+				"data-cli-plan": "dock",
+				"data-state": plan.pending ? "pending" : plan.reviewPending ? "review" : "active"
+			},
+				h("div", { className: "cli-plan-bar" },
+					h("span", { className: "cli-plan-mark", "aria-hidden": "true" }, "◆"),
+					h("span", { className: "cli-plan-kicker" }, copy.kicker),
+					h("span", { className: "cli-plan-title" }, status),
+					h("div", { className: "cli-plan-actions" },
+						plan.reviewPending ? h("button", {
+							type: "button",
+							className: "cli-plan-approve",
+							disabled: busy,
+							onClick: () => run(onApprove)
+						}, copy.approve) : null,
+						plan.reviewPending ? h("button", {
+							type: "button",
+							className: "cli-plan-keep",
+							disabled: busy,
+							onClick: () => run(onKeep)
+						}, copy.keep) : null,
+						h("button", {
+							type: "button",
+							className: "cli-plan-exit",
+							disabled: busy,
+							onClick: () => run(onExit)
+						}, copy.exit))),
+				plan.reviewPending && plan.plan ? h("div", { className: "cli-plan-preview" }, h("pre", { className: "cli-plan-text" }, plan.plan)) : null);
+		}
+		/** Transcript row for /codex-plan; the command outcome carries the approved plan text. */
+		function CodexPlanCommandCard({ node }) {
+			const copy = planCopy(isZh());
+			const outcome = node?.outcome ?? null;
+			const text = outcome?.text ?? "";
+			const running = outcome === null;
+			const failed = outcome?.kind === "error";
+			return h("div", {
+				className: "cli-plan-card",
+				"data-cli-plan": "card",
+				"data-state": running ? "running" : failed ? "error" : "ok"
+			},
+				h("span", { className: "cli-plan-mark", "aria-hidden": "true" }, "◆"),
+				h("span", { className: "cli-plan-kicker" }, copy.kicker),
+				h("span", { className: "cli-plan-title" }, running ? copy.running : failed ? copy.failed : copy.done),
+				text ? h("pre", { className: "cli-plan-text" }, text) : null);
+		}
+
 		function makeAgentPage(agent) {
 			return function CliAgentPage(props) {
 				const { t } = props;
@@ -455,7 +677,32 @@ window.__ModuleLoader__.load({
 			".cli-agent-step>:not(.cli-agent-label){margin:0}",
 			".cli-agent-field{display:flex;flex-direction:column;gap:6px;padding:12px 0;border-top:.5px solid var(--dsw-alias-border-l2)}",
 			".cli-quota{display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:.5px solid var(--dsw-alias-border-l2)}",
-			".cli-quota-text{margin:0;white-space:pre-wrap;font-family:var(--dsw-font-mono);font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary)}"
+			".cli-quota-text{margin:0;white-space:pre-wrap;font-family:var(--dsw-font-mono);font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary)}",
+			".cli-quota-dock{box-sizing:border-box;width:100%;max-width:calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));margin:0 auto 8px;display:flex;flex-direction:column;gap:6px}",
+			".cli-quota-head{display:flex;align-items:center;gap:8px;padding:0 4px}",
+			".cli-quota-brand{display:flex;align-items:center;gap:6px;min-width:0;flex:1}",
+			".cli-quota-mark{width:8px;height:8px;border-radius:2px;background:var(--dsw-alias-state-success-primary);flex:none}",
+			".cli-quota-dock[data-backend=claude-code] .cli-quota-mark{background:#d97757}",
+			".cli-quota-title{min-width:0;font-size:12px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}",
+			".cli-quota-meta{display:flex;align-items:center;gap:6px;flex:none}",
+			".cli-quota-updated{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}",
+			".cli-quota-refresh{cursor:pointer;border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;padding:2px 4px;border-radius:var(--dsw-radius-sm)}",
+			".cli-quota-refresh:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}",
+			".cli-quota-refresh:disabled{opacity:.4;cursor:default}",
+			".cli-quota-card{box-sizing:border-box;background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-panel);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}",
+			".cli-quota-card-head{display:flex;justify-content:space-between;align-items:center;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px}",
+			".cli-quota-window{display:flex;flex-direction:column;gap:4px}",
+			".cli-quota-window-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:8px}",
+			".cli-quota-window-name{font-size:12px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary)}",
+			".cli-quota-window-reset{min-width:0;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}",
+			".cli-quota-window-value{font-size:13px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}",
+			".cli-quota-bar{height:6px;border-radius:999px;background:var(--dsw-alias-interactive-bg-hover-solid);overflow:hidden}",
+			".cli-quota-fill{height:100%;border-radius:inherit;background:var(--dsw-alias-state-success-primary);transition:width .2s}",
+			".cli-quota-window[data-tone=mid] .cli-quota-fill{background:var(--dsw-alias-state-warning-primary,#d97706)}",
+			".cli-quota-window[data-tone=low] .cli-quota-fill{background:var(--dsw-alias-state-error-primary)}",
+			".cli-quota-note{margin:0;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary);white-space:pre-wrap}",
+			".cli-quota-note[data-error=true]{color:var(--dsw-alias-state-error-primary)}",
+			".cli-quota-loading{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}"
 		].join("\n");
 		//#endregion
 		//#region mode menu marks
@@ -1252,6 +1499,25 @@ window.__ModuleLoader__.load({
 			".cli-resume-close:disabled{opacity:.4;cursor:default}",
 			"@media (max-width:640px){.cli-resume-hint{display:none}}"
 		].join("\n");
+		const PLAN_CSS = [
+			".cli-plan-dock{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - 4 * var(--dsh-composer-dock-inset));margin:0 auto 8px}",
+			".cli-plan-bar{isolation:isolate;box-sizing:border-box;align-items:center;gap:8px;display:flex;position:relative;width:100%;max-width:calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));min-height:36px;margin:0 auto;padding:4px 6px 4px 12px;border-radius:var(--dsw-radius-md);box-shadow:var(--dsw-elevation-panel)}",
+			".cli-plan-bar:before{z-index:-1;border-radius:inherit;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);content:\"\";position:absolute;inset:0}",
+			".cli-plan-mark{color:var(--dsw-alias-label-tertiary);flex:none;font-size:12px;line-height:20px}",
+			".cli-plan-kicker{color:var(--dsw-alias-label-primary);flex:none;font-size:13px;font-weight:600;line-height:20px}",
+			".cli-plan-title{min-width:0;color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:12px;line-height:18px;overflow:hidden}",
+			".cli-plan-actions{display:flex;align-items:center;gap:4px;flex:none}",
+			".cli-plan-actions button{corner-shape:round;min-height:26px;padding:0 8px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:1px solid var(--dsw-alias-border-secondary);border-radius:999px;font-size:12px;line-height:24px}",
+			".cli-plan-actions button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}",
+			".cli-plan-actions button:disabled{opacity:.4;cursor:default}",
+			".cli-plan-actions .cli-plan-approve{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-primary)}",
+			".cli-plan-preview{max-height:220px;margin:6px auto 0;padding:8px 12px;overflow:auto;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-interactive-bg-hover-solid)}",
+			".cli-plan-preview .cli-plan-text{margin:0;font-size:12px;line-height:18px;white-space:pre-wrap;word-break:break-word}",
+			".cli-plan-card{isolation:isolate;box-sizing:border-box;display:flex;align-items:center;gap:8px;position:relative;margin:2px 0;padding:8px 12px;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-interactive-bg-hover-solid);border-left:2px solid var(--dsw-alias-label-primary);flex-wrap:wrap}",
+			".cli-plan-card[data-state=error]{border-left-color:var(--dsw-alias-state-error-primary)}",
+			".cli-plan-card .cli-plan-text{flex-basis:100%;margin:2px 0 0;font-size:12px;line-height:18px;white-space:pre-wrap;word-break:break-word;color:var(--dsw-alias-label-secondary);max-height:240px;overflow:auto}",
+			"@media (max-width:640px){.cli-plan-actions .cli-plan-keep{display:none}}"
+		].join("\n");
 		function resumeCopy(zh) {
 			return zh ? {
 				continuing: "正在续接",
@@ -1373,6 +1639,42 @@ window.__ModuleLoader__.load({
 				for (const stop of stops) if (typeof stop === "function") stop();
 			};
 		}
+		function mountQuotaDock(ctx) {
+			if (typeof ctx.slots?.inject !== "function") return () => {};
+			return ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
+				name: "conversation.input.dock",
+				id: "cli-quota",
+				order: 21
+			}, QuotaDock));
+		}
+		function mountPlanDock(ctx) {
+			if (typeof ctx.slots?.inject !== "function") return () => {};
+			const run = (sessionId, line) => ctx.sessions?.binding?.(sessionId)?.session?.command?.(line);
+			const focus = () => {
+				try {
+					document.querySelector("textarea")?.focus();
+				} catch {}
+			};
+			const stops = [
+				ctx.slots.inject("conversation.chat.commandview", () => ctx.slots.register({
+					name: "conversation.chat.commandview",
+					key: "codex-plan"
+				}, CodexPlanCommandCard)),
+				ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
+					name: "conversation.input.dock",
+					id: "cli-plan",
+					order: 22,
+					inject: (sessionId) => ({
+						onApprove: () => run(sessionId, "/codex-plan approve"),
+						onExit: () => run(sessionId, "/codex-plan off"),
+						onKeep: focus
+					})
+				}, PlanDock))
+			];
+			return () => {
+				for (const stop of stops) if (typeof stop === "function") stop();
+			};
+		}
 		function decorateResume(ctx) {
 			const command = ctx.get("commandUi");
 			const sessions = ctx.sessions;
@@ -1444,7 +1746,10 @@ window.__ModuleLoader__.load({
 			}
 			ctx.effect(() => decorateResume(ctx), "dsh-cli-bridge: /resume");
 			ctx.effect(() => addStyle("resume.css", RESUME_CSS), "dsh-cli-bridge: resume bar");
+			ctx.effect(() => addStyle("plan.css", PLAN_CSS), "dsh-cli-bridge: plan bar");
 			ctx.effect(() => mountResumeSurface(ctx), "dsh-cli-bridge: resume surface");
+			ctx.effect(() => mountQuotaDock(ctx), "dsh-cli-bridge: quota dock");
+			ctx.effect(() => mountPlanDock(ctx), "dsh-cli-bridge: plan dock");
 			ctx.effect(() => paintSlashIcons(ctx.get("inputTriggers")), "dsh-cli-bridge: slash icons");
 		}
 		/** Skill rows and /resume borrow the same glyphs the rest of the slash menu uses. */
