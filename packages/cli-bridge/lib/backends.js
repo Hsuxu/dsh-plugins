@@ -334,7 +334,7 @@ export const COMMAND_SUPPORT = {
 }
 
 /** Commands DSH itself owns; a backend cannot shadow them. */
-export const RESERVED_COMMANDS = new Set(['resume', 'agent', 'model', 'plan', 'compact', 'goal', 'clear', 'help'])
+export const RESERVED_COMMANDS = new Set(['resume', 'agent', 'model', 'plan', 'codex-plan', 'compact', 'goal', 'clear', 'help'])
 
 /** Registered native command names for a backend, never shadowing DSH. */
 export function nativeCommands(backendId) {
