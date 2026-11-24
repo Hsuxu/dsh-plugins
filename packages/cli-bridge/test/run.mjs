@@ -3,6 +3,7 @@
 import './backends.test.js'
 import './catalog.test.js'
 import './commands.test.js'
+import './plan.test.js'
 import './process.test.js'
 import './quota.test.js'
 import './sessions.test.js'

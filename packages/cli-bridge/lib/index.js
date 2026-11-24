@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { arch, platform, release } from 'node:os'
 import { promisify } from 'node:util'
 import { BACKENDS, currentBackend } from './backends.js'
+import { PLAN_EVENT, PLAN_PROJECTION_KEY, planView } from './plan.js'
 import { queryQuota } from './quota.js'
 import { BINDING_EVENT, bindingView, isClearResumeToken, isSessionId, listBackendSessions, readBinding } from './sessions.js'
 import { redact } from './turn-writer.js'
@@ -78,11 +79,46 @@ export function bindingProjection() {
   }
 }
 
+/**
+ * Codex Plan state. The dock reads it through `useProjection('cliPlan')`; the
+ * plan text is also the outcome of the `/codex-plan` command card.
+ */
+export function planProjection() {
+  const { z } = loadZod()
+  const schema = z.object({
+    active: z.boolean(),
+    pending: z.boolean(),
+    reviewPending: z.boolean(),
+    threadId: z.string().nullable(),
+    plan: z.string(),
+    requestId: z.string().nullable(),
+    updatedAt: z.number(),
+    approved: z.boolean().optional(),
+    error: z.string().nullable().optional(),
+  }).strict().nullable()
+  return {
+    key: PLAN_PROJECTION_KEY,
+    stateVersion: 1,
+    stateSchema: schema,
+    init: () => null,
+    apply(state, event) {
+      if (event.type === 'agent-preset/selected') return null
+      if (event.type !== PLAN_EVENT) return state
+      return planView(event.data)
+    },
+    wire: {
+      viewSchema: schema,
+      view: (state) => state,
+    },
+  }
+}
+
 export const name = 'dsh-cli-bridge'
 export const inject = ['connection', 'sessions', 'sessionProjections']
 
 export function apply(ctx) {
   ctx.sessionProjections.register(bindingProjection())
+  ctx.sessionProjections.register(planProjection())
   ctx.effect(() => ctx.connection.fetch.register({
     path: '/api/cli-bridge/sessions',
     methods: ['GET', 'DELETE'],

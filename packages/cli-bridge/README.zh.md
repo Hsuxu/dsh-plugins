@@ -55,6 +55,10 @@ Bridge → 对应行）会显示 CLI 是否可运行、模型数量以及安装/
 - `/quota` —— 查询 Claude Code 或 Codex 已登录账号的订阅额度。Codex 通过
   `codex app-server` 的 `account/rateLimits/read` 读取；Claude Code 读取 OAuth
   用量接口。设置页也会显示同一份快照，并提供刷新按钮。
+- `/codex-plan <任务>` —— 通过 Codex 原生的 Plan 协作模式（`codex app-server`，
+  只读沙箱）执行任务。规划会显示为会话记录中的卡片，以及输入框上方的规划栏。
+  `/codex-plan approve` 会把批准的规划作为实施轮次发回；`/codex-plan off` 退出
+  规划模式。规划状态记录在会话日志中，DSH 重启后仍然保留。
 - **已验证的原生命令** —— 只注册在该 CLI 无头/print 模式下确实能执行的命令
   （见下一节）。模型选择仍由 DSH 的模型选择器负责，因此 `/model` 是 DSH 自己的
   命令。
@@ -76,6 +80,7 @@ Bridge → 对应行）会显示 CLI 是否可运行、模型数量以及安装/
 | `/resume` | 插件实现 | 插件实现 | 插件实现 | 插件实现 |
 | `/agent <内容>` | 插件实现 | 插件实现 | 插件实现 | 插件实现 |
 | `/quota` | 订阅额度 | 订阅额度 | — | — |
+| `/codex-plan` | — | 原生 Plan 模式 | — | — |
 | `/cli-compact` | 转发（已实测） | — | 转发（文档说明） | 转发（文档说明） |
 | `/config`、`/usage`、`/context`、`/cost` | 转发（已实测） | — | `/config`、`/usage`、`/context` 有文档 | `/config`、`/context`、`/cost` 有文档 |
 | `/status`、`/skills`、`/permissions`、`/help` | print 模式下**不可用** | `codex exec` 没有斜杠命令层 | 文档称 print 模式会展开 | 文档称 print 模式会展开 |
@@ -87,7 +92,10 @@ Bridge → 对应行）会显示 CLI 是否可运行、模型数量以及安装/
 - **Claude Code**：针对 Claude Code 2.1.329 验证。`/config`、`/usage`、`/context`、
   `/cost`、`/compact` 会作为本地命令执行；`/status`、`/skills`、`/permissions`、
   `/help` 返回“isn't available in this environment”，因此不注册。
-- **Codex**：`exec` 没有斜杠命令层，因此不注册原生命令；技能仍通过插件注入内容
+- **Codex**：`exec` 没有斜杠命令层，因此不注册原生命令；`/codex-plan` 是独立
+  实现：它启动 `codex app-server` 线程，使用
+  `collaborationMode: { mode: "plan" }` 与只读沙箱，把规划项流式读回并写入
+  `cliPlan` 会话投影；技能仍通过插件注入内容
   生效。
 - **Antigravity**：CLI 文档称 print 模式会展开斜杠命令，但本插件不附带 `agy`，
   这部分只有文档依据，尚未验证。

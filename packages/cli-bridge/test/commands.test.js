@@ -24,9 +24,9 @@ test('Claude Code registers only verified commands and keeps /compact for DSH', 
   for (const name of ['compact', 'status', 'skills', 'permissions', 'help']) assert.ok(!names.includes(name), name)
 })
 
-test('Codex registers no native commands, no cli-compact, and the quota command', () => {
+test('Codex registers no native commands, no cli-compact, and the plan/quota commands', () => {
   const names = commandNames('codex')
-  assert.deepEqual(names.sort(), ['agent', 'quota', 'resume'].sort())
+  assert.deepEqual(names.sort(), ['agent', 'codex-plan', 'quota', 'resume'].sort())
 })
 
 test('CodeBuddy forwards its documented local commands and offers cli-compact', () => {
