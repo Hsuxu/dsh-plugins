@@ -536,6 +536,7 @@ window.__ModuleLoader__.load({
 						h("div", { className: "cli-quota-note", "data-error": true }, state.message)));
 		}
 
+		let rootCtx = null;
 		function planCopy(zh) {
 			return zh ? {
 				kicker: "Codex 规划",
@@ -547,7 +548,14 @@ window.__ModuleLoader__.load({
 				empty: "暂无规划。",
 				failed: "Codex 规划失败",
 				running: "正在规划…",
-				done: "规划"
+				done: "规划",
+				chipPending: "规划中…",
+				chipReview: "待批准",
+				chipActive: "Codex 规划",
+				reviewTitle: "Codex 规划",
+				reviewHint: "审阅计划后选择批准或继续规划。",
+				openReview: "查看规划",
+				noPlan: "计划尚未生成。"
 			} : {
 				kicker: "Codex Plan",
 				pending: "Codex is planning…",
@@ -558,69 +566,137 @@ window.__ModuleLoader__.load({
 				empty: "No plan yet.",
 				failed: "Codex Plan failed",
 				running: "Planning…",
-				done: "Plan"
+				done: "Plan",
+				chipPending: "Planning…",
+				chipReview: "Review",
+				chipActive: "Codex Plan",
+				reviewTitle: "Codex Plan",
+				reviewHint: "Review the plan, then approve or keep planning.",
+				openReview: "View plan",
+				noPlan: "No plan yet."
 			};
 		}
-		/** Plan bar above the composer while Codex is planning or a plan waits for review. */
-		function PlanDock({ useProjection, onApprove, onExit, onKeep }) {
+		function planTitleOf(markdown) {
+			const line = String(markdown || "").split("\n").map((value) => value.trim()).find(Boolean) || "";
+			return line.replace(/^#+\s*/, "").slice(0, 120) || planCopy(isZh()).reviewTitle;
+		}
+		function openPlanReview(ctx, sessionId, plan) {
+			if (!plan || typeof plan.plan !== "string" || !plan.plan.trim()) return;
+			const sidebar = ctx.sidebarRight;
+			if (!sidebar || typeof sidebar.openResource !== "function") return;
+			const requestId = plan.requestId || String(Date.now());
+			sidebar.openResource(`dsh-resource://codex-plan/${sessionId}/${requestId}`, {
+				params: {
+					codexPlan: {
+						sessionId,
+						requestId,
+						title: planTitleOf(plan.plan),
+						plan: plan.plan
+					}
+				}
+			});
+		}
+		/** Compact status chip in the composer tool row, shaped after DSH's own plan chip. */
+		function PlanChip({ useProjection, sessionId, onOpen }) {
 			const preset = useProjection("agentPreset");
 			const plan = useProjection("cliPlan");
+			const opened = React.useRef("");
 			const backend = typeof preset === "string" && preset.startsWith("cli-") ? preset.slice("cli-".length) : "";
-			const [busy, setBusy] = React.useState(false);
+			React.useEffect(() => {
+				if (backend !== "codex" || !plan || !plan.reviewPending || !plan.plan || !plan.requestId) return;
+				if (opened.current === plan.requestId) return;
+				opened.current = plan.requestId;
+				if (typeof onOpen === "function") onOpen(plan);
+			}, [backend, plan, onOpen]);
 			if (backend !== "codex" || !plan || !(plan.active || plan.pending || plan.reviewPending)) return null;
 			const copy = planCopy(isZh());
-			const status = plan.pending ? copy.pending : plan.reviewPending ? copy.ready : copy.empty;
-			const run = (fn) => {
-				if (busy) return;
-				setBusy(true);
-				Promise.resolve(typeof fn === "function" ? fn() : null).finally(() => setBusy(false));
-			};
-			return h("div", {
-				className: "cli-plan-dock",
-				"data-cli-plan": "dock",
-				"data-state": plan.pending ? "pending" : plan.reviewPending ? "review" : "active"
+			const state = plan.pending ? "pending" : plan.reviewPending ? "review" : "active";
+			const label = plan.pending ? copy.chipPending : plan.reviewPending ? copy.chipReview : copy.chipActive;
+			return h("button", {
+				type: "button",
+				className: "cli-plan-chip",
+				"data-cli-plan": "chip",
+				"data-state": state,
+				title: plan.reviewPending ? copy.openReview : label,
+				onClick: () => {
+					if (typeof onOpen === "function") onOpen(plan);
+				}
 			},
-				h("div", { className: "cli-plan-bar" },
-					h("span", { className: "cli-plan-mark", "aria-hidden": "true" }, "◆"),
-					h("span", { className: "cli-plan-kicker" }, copy.kicker),
-					h("span", { className: "cli-plan-title" }, status),
-					h("div", { className: "cli-plan-actions" },
-						plan.reviewPending ? h("button", {
-							type: "button",
-							className: "cli-plan-approve",
-							disabled: busy,
-							onClick: () => run(onApprove)
-						}, copy.approve) : null,
-						plan.reviewPending ? h("button", {
-							type: "button",
-							className: "cli-plan-keep",
-							disabled: busy,
-							onClick: () => run(onKeep)
-						}, copy.keep) : null,
-						h("button", {
-							type: "button",
-							className: "cli-plan-exit",
-							disabled: busy,
-							onClick: () => run(onExit)
-						}, copy.exit))),
-				plan.reviewPending && plan.plan ? h("div", { className: "cli-plan-preview" }, h("pre", { className: "cli-plan-text" }, plan.plan)) : null);
+				h("span", { className: "cli-plan-chip-mark", "aria-hidden": "true" }, "◆"),
+				h("span", null, label));
 		}
-		/** Transcript row for /codex-plan; the command outcome carries the approved plan text. */
-		function CodexPlanCommandCard({ node }) {
+		/** Plan document in the right sidebar; approval lives here, not in the transcript. */
+		function PlanReview({ useTabInfo }) {
+			const info = typeof useTabInfo === "function" ? useTabInfo() : undefined;
+			const params = info?.tab?.navigation?.params?.codexPlan;
+			const [busy, setBusy] = React.useState(false);
+			const [error, setError] = React.useState("");
 			const copy = planCopy(isZh());
-			const outcome = node?.outcome ?? null;
-			const text = outcome?.text ?? "";
-			const running = outcome === null;
-			const failed = outcome?.kind === "error";
-			return h("div", {
-				className: "cli-plan-card",
-				"data-cli-plan": "card",
-				"data-state": running ? "running" : failed ? "error" : "ok"
+			const close = () => {
+				try {
+					info?.tab?.actions?.close?.();
+				} catch {}
+			};
+			const focus = () => {
+				try {
+					document.querySelector("textarea")?.focus();
+				} catch {}
+			};
+			const run = (line, after) => {
+				if (busy) return;
+				if (!params?.sessionId) {
+					setError("No session is attached to this plan.");
+					return;
+				}
+				const commands = rootCtx?.remote?.commands;
+				if (!commands || typeof commands.execute !== "function") {
+					setError("Commands are unavailable.");
+					return;
+				}
+				setBusy(true);
+				setError("");
+				Promise.resolve(commands.execute(params.sessionId, line, [])).then((result) => {
+					if (result?.ok) after?.();
+					else setError(result?.error?.message || "Command failed.");
+				}, (reason) => setError(reason instanceof Error ? reason.message : String(reason))).finally(() => setBusy(false));
+			};
+			if (!params) return h("div", { className: "cli-plan-review-empty" }, copy.noPlan);
+			return h("section", {
+				className: "cli-plan-review",
+				"data-cli-plan": "review",
+				"data-state": "review"
 			},
-				h("span", { className: "cli-plan-mark", "aria-hidden": "true" }, "◆"),
-				h("span", { className: "cli-plan-kicker" }, copy.kicker),
-				h("span", { className: "cli-plan-title" }, running ? copy.running : failed ? copy.failed : copy.done),
-				text ? h("pre", { className: "cli-plan-text" }, text) : null);
+				h("header", { className: "cli-plan-review-head" },
+					h("span", { className: "cli-plan-review-mark", "aria-hidden": "true" }, "◆"),
+					h("span", { className: "cli-plan-review-title" }, params.title || copy.reviewTitle),
+					h("span", { className: "cli-plan-review-hint" }, copy.reviewHint)),
+				h("div", { className: "cli-plan-review-body" }, h("pre", { className: "cli-plan-review-text" }, params.plan)),
+				error ? h("div", { className: "cli-plan-review-error", role: "status" }, error) : null,
+				h("footer", { className: "cli-plan-review-actions" },
+					h("button", {
+						type: "button",
+						className: "cli-plan-approve",
+						disabled: busy,
+						onClick: () => run("/codex-plan approve", close)
+					}, copy.approve),
+					h("button", {
+						type: "button",
+						disabled: busy,
+						onClick: () => {
+							close();
+							focus();
+						}
+					}, copy.keep),
+					h("button", {
+						type: "button",
+						disabled: busy,
+						onClick: () => run("/codex-plan off", close)
+					}, copy.exit)));
+		}
+		function PlanReviewTitle({ useTabInfo }) {
+			const info = typeof useTabInfo === "function" ? useTabInfo() : undefined;
+			const params = info?.tab?.navigation?.params?.codexPlan;
+			return h("span", null, params?.title || planCopy(isZh()).reviewTitle);
 		}
 
 		function makeAgentPage(agent) {
@@ -1500,23 +1576,25 @@ window.__ModuleLoader__.load({
 			"@media (max-width:640px){.cli-resume-hint{display:none}}"
 		].join("\n");
 		const PLAN_CSS = [
-			".cli-plan-dock{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - 4 * var(--dsh-composer-dock-inset));margin:0 auto 8px}",
-			".cli-plan-bar{isolation:isolate;box-sizing:border-box;align-items:center;gap:8px;display:flex;position:relative;width:100%;max-width:calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));min-height:36px;margin:0 auto;padding:4px 6px 4px 12px;border-radius:var(--dsw-radius-md);box-shadow:var(--dsw-elevation-panel)}",
-			".cli-plan-bar:before{z-index:-1;border-radius:inherit;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);content:\"\";position:absolute;inset:0}",
-			".cli-plan-mark{color:var(--dsw-alias-label-tertiary);flex:none;font-size:12px;line-height:20px}",
-			".cli-plan-kicker{color:var(--dsw-alias-label-primary);flex:none;font-size:13px;font-weight:600;line-height:20px}",
-			".cli-plan-title{min-width:0;color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:12px;line-height:18px;overflow:hidden}",
-			".cli-plan-actions{display:flex;align-items:center;gap:4px;flex:none}",
-			".cli-plan-actions button{corner-shape:round;min-height:26px;padding:0 8px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:1px solid var(--dsw-alias-border-secondary);border-radius:999px;font-size:12px;line-height:24px}",
-			".cli-plan-actions button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}",
-			".cli-plan-actions button:disabled{opacity:.4;cursor:default}",
-			".cli-plan-actions .cli-plan-approve{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-primary)}",
-			".cli-plan-preview{max-height:220px;margin:6px auto 0;padding:8px 12px;overflow:auto;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-interactive-bg-hover-solid)}",
-			".cli-plan-preview .cli-plan-text{margin:0;font-size:12px;line-height:18px;white-space:pre-wrap;word-break:break-word}",
-			".cli-plan-card{isolation:isolate;box-sizing:border-box;display:flex;align-items:center;gap:8px;position:relative;margin:2px 0;padding:8px 12px;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-interactive-bg-hover-solid);border-left:2px solid var(--dsw-alias-label-primary);flex-wrap:wrap}",
-			".cli-plan-card[data-state=error]{border-left-color:var(--dsw-alias-state-error-primary)}",
-			".cli-plan-card .cli-plan-text{flex-basis:100%;margin:2px 0 0;font-size:12px;line-height:18px;white-space:pre-wrap;word-break:break-word;color:var(--dsw-alias-label-secondary);max-height:240px;overflow:auto}",
-			"@media (max-width:640px){.cli-plan-actions .cli-plan-keep{display:none}}"
+			".cli-plan-chip{display:inline-flex;align-items:center;gap:6px;max-width:240px;min-height:26px;padding:0 9px;overflow:hidden;color:var(--dsw-alias-label-secondary);cursor:pointer;background:var(--dsw-alias-interactive-bg-hover);border:1px solid var(--dsw-alias-border-secondary);border-radius:999px;font-size:12px;line-height:24px;white-space:nowrap}",
+			".cli-plan-chip:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid)}",
+			".cli-plan-chip[data-state=review]{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-primary)}",
+			".cli-plan-chip[data-state=pending]{opacity:.75}",
+			".cli-plan-chip-mark{flex:none;color:var(--dsw-alias-label-tertiary);font-size:11px}",
+			".cli-plan-review{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;padding:16px;gap:12px}",
+			".cli-plan-review-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;flex:none}",
+			".cli-plan-review-mark{color:var(--dsw-alias-label-tertiary);font-size:12px}",
+			".cli-plan-review-title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:600;line-height:20px}",
+			".cli-plan-review-hint{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}",
+			".cli-plan-review-body{box-sizing:border-box;flex:1;min-height:0;padding:12px;overflow:auto;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-interactive-bg-hover-solid)}",
+			".cli-plan-review-text{margin:0;color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px;white-space:pre-wrap;word-break:break-word}",
+			".cli-plan-review-actions{display:flex;align-items:center;gap:6px;flex:none;flex-wrap:wrap}",
+			".cli-plan-review-actions button{corner-shape:round;min-height:28px;padding:0 10px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:1px solid var(--dsw-alias-border-secondary);border-radius:999px;font-size:12px;line-height:26px}",
+			".cli-plan-review-actions button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}",
+			".cli-plan-review-actions button:disabled{opacity:.4;cursor:default}",
+			".cli-plan-review-actions .cli-plan-approve{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-primary)}",
+			".cli-plan-review-error{color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}",
+			".cli-plan-review-empty{padding:16px;color:var(--dsw-alias-label-secondary);font-size:12px}"
 		].join("\n");
 		function resumeCopy(zh) {
 			return zh ? {
@@ -1647,30 +1725,36 @@ window.__ModuleLoader__.load({
 				order: 21
 			}, QuotaDock));
 		}
-		function mountPlanDock(ctx) {
+		function mountPlanUi(ctx) {
 			if (typeof ctx.slots?.inject !== "function") return () => {};
-			const run = (sessionId, line) => ctx.sessions?.binding?.(sessionId)?.session?.command?.(line);
-			const focus = () => {
-				try {
-					document.querySelector("textarea")?.focus();
-				} catch {}
-			};
-			const stops = [
-				ctx.slots.inject("conversation.chat.commandview", () => ctx.slots.register({
-					name: "conversation.chat.commandview",
-					key: "codex-plan"
-				}, CodexPlanCommandCard)),
-				ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
-					name: "conversation.input.dock",
-					id: "cli-plan",
-					order: 22,
-					inject: (sessionId) => ({
-						onApprove: () => run(sessionId, "/codex-plan approve"),
-						onExit: () => run(sessionId, "/codex-plan off"),
-						onKeep: focus
-					})
-				}, PlanDock))
-			];
+			const stops = [];
+			const tabs = ctx.sidebarRightTabs;
+			if (tabs && typeof tabs.register === "function") {
+				stops.push(tabs.register({
+					id: "dsh-cli-bridge",
+					kind: "codex-plan",
+					patterns: ["dsh-resource://codex-plan/**"],
+					priority: "extension",
+					title: () => planCopy(isZh()).reviewTitle,
+					canOpen: () => true
+				}));
+			}
+			stops.push(ctx.slots.inject("conversation.input.left", () => ctx.slots.register({
+				name: "conversation.input.left",
+				id: "cli-plan",
+				order: 10,
+				inject: (sessionId) => ({
+					onOpen: (plan) => openPlanReview(ctx, sessionId, plan)
+				})
+			}, PlanChip)));
+			stops.push(ctx.slots.inject("sidebar.right.pane.tab", () => ctx.slots.register({
+				name: "sidebar.right.pane.tab",
+				key: "dsh-cli-bridge"
+			}, PlanReview)));
+			stops.push(ctx.slots.inject("sidebar.right.pane.tab.title", () => ctx.slots.register({
+				name: "sidebar.right.pane.tab.title",
+				key: "dsh-cli-bridge"
+			}, PlanReviewTitle)));
 			return () => {
 				for (const stop of stops) if (typeof stop === "function") stop();
 			};
@@ -1721,8 +1805,9 @@ window.__ModuleLoader__.load({
 				}
 			});
 		}
-		const inject = ["slots", "locale", "configForms", "remote", "remote.session", "commandUi", "sessions", "inputTriggers"];
+		const inject = ["slots", "locale", "configForms", "remote", "remote.commands", "remote.session", "commandUi", "sessions", "inputTriggers", "sidebarRight", "sidebarRightTabs"];
 		function apply(ctx) {
+			rootCtx = ctx;
 			ctx.effect(() => addStyle("model-brand.css", labelCss()), "dsh-cli-bridge: model brand marks");
 			ctx.effect(() => addStyle("model-menu.css", modelMenuCss()), "dsh-cli-bridge: model menu layout");
 			ctx.effect(() => addStyle("agent-settings.css", PAGE_CSS), "dsh-cli-bridge: settings layout");
@@ -1746,10 +1831,10 @@ window.__ModuleLoader__.load({
 			}
 			ctx.effect(() => decorateResume(ctx), "dsh-cli-bridge: /resume");
 			ctx.effect(() => addStyle("resume.css", RESUME_CSS), "dsh-cli-bridge: resume bar");
-			ctx.effect(() => addStyle("plan.css", PLAN_CSS), "dsh-cli-bridge: plan bar");
+			ctx.effect(() => addStyle("plan.css", PLAN_CSS), "dsh-cli-bridge: plan chip and review");
 			ctx.effect(() => mountResumeSurface(ctx), "dsh-cli-bridge: resume surface");
 			ctx.effect(() => mountQuotaDock(ctx), "dsh-cli-bridge: quota dock");
-			ctx.effect(() => mountPlanDock(ctx), "dsh-cli-bridge: plan dock");
+			ctx.effect(() => mountPlanUi(ctx), "dsh-cli-bridge: plan review");
 			ctx.effect(() => paintSlashIcons(ctx.get("inputTriggers")), "dsh-cli-bridge: slash icons");
 		}
 		/** Skill rows and /resume borrow the same glyphs the rest of the slash menu uses. */

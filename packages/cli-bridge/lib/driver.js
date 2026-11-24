@@ -483,7 +483,7 @@ export function apply(ctx, config = {}) {
         requestId,
         updatedAt: Date.now(),
       })
-      return { kind: 'success', text: result.plan }
+      return { kind: 'success' }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       record(session, PLAN_EVENT, {
