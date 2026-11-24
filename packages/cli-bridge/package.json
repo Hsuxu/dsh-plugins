@@ -1,6 +1,6 @@
 {
   "name": "dsh-cli-bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "DeepSeek Harness plugin: run Claude Code, Codex, Antigravity CLI, and CodeBuddy sessions in DSH, which provides the UI, commands, and audit trail",
   "type": "module",
