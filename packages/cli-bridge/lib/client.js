@@ -401,6 +401,55 @@ window.__ModuleLoader__.load({
 						h("p", { className: "cli-agent-hint" }, state.message));
 		}
 
+		const QUOTA_BACKENDS = new Set(["claude-code", "codex"]);
+		/** Compact quota bar above the composer while a CLI Claude Code/Codex session is open. */
+		function QuotaDock({ useProjection }) {
+			const preset = useProjection("agentPreset");
+			const backend = typeof preset === "string" && preset.startsWith("cli-") ? preset.slice("cli-".length) : "";
+			const supported = QUOTA_BACKENDS.has(backend);
+			const [state, setState] = React.useState({ phase: "loading" });
+			const [nonce, setNonce] = React.useState(0);
+			React.useEffect(() => {
+				if (!supported) return void 0;
+				const controller = new AbortController();
+				let live = true;
+				setState({ phase: "loading" });
+				(async () => {
+					try {
+						const query = `backend=${encodeURIComponent(backend)}${nonce ? "&refresh=1" : ""}`;
+						const response = await fetch(`/api/cli-bridge/quota?${query}`, { signal: controller.signal });
+						const data = await response.json().catch(() => void 0);
+						if (!live) return;
+						if (!response.ok || !data) setState({ phase: "failed", message: isZh() ? "额度查询失败" : "Quota query failed" });
+						else if (data.ok) setState({ phase: "ready", text: data.text });
+						else setState({ phase: "failed", message: data.error || (isZh() ? "额度查询失败" : "Quota query failed") });
+					} catch (error) {
+						if (!live || error?.name === "AbortError") return;
+						setState({ phase: "failed", message: error instanceof Error ? error.message : String(error) });
+					}
+				})();
+				return () => {
+					live = false;
+					controller.abort();
+				};
+			}, [backend, nonce, supported]);
+			if (!supported) return null;
+			const zh = isZh();
+			const label = backend === "codex" ? "Codex" : "Claude Code";
+			return h("div", { className: "cli-quota-dock", "data-cli-quota": "dock" },
+				h("div", { className: "cli-quota-dock-head" },
+					h("span", { className: "cli-quota-dock-label" }, zh ? `${label} 额度` : `${label} quota`),
+					h("button", {
+						type: "button",
+						className: "cli-quota-dock-refresh",
+						disabled: state.phase === "loading",
+						onClick: () => setNonce((value) => value + 1)
+					}, zh ? "刷新" : "Refresh")),
+				state.phase === "loading" ? h("span", { className: "cli-quota-dock-hint" }, zh ? "查询中…" : "Loading…") :
+					state.phase === "ready" ? h("pre", { className: "cli-quota-dock-text" }, state.text) :
+						h("span", { className: "cli-quota-dock-hint" }, state.message));
+		}
+
 		function makeAgentPage(agent) {
 			return function CliAgentPage(props) {
 				const { t } = props;
@@ -455,7 +504,15 @@ window.__ModuleLoader__.load({
 			".cli-agent-step>:not(.cli-agent-label){margin:0}",
 			".cli-agent-field{display:flex;flex-direction:column;gap:6px;padding:12px 0;border-top:.5px solid var(--dsw-alias-border-l2)}",
 			".cli-quota{display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:.5px solid var(--dsw-alias-border-l2)}",
-			".cli-quota-text{margin:0;white-space:pre-wrap;font-family:var(--dsw-font-mono);font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary)}"
+			".cli-quota-text{margin:0;white-space:pre-wrap;font-family:var(--dsw-font-mono);font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary)}",
+			".cli-quota-dock{box-sizing:border-box;width:100%;max-width:calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));margin:0 auto 8px;padding:8px 10px;border-radius:var(--dsw-radius-md);background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-panel);display:flex;flex-direction:column;gap:4px}",
+			".cli-quota-dock-head{display:flex;align-items:center;gap:8px}",
+			".cli-quota-dock-label{flex:1;min-width:0;font-size:12px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary)}",
+			".cli-quota-dock-refresh{cursor:pointer;border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;padding:2px 4px;border-radius:var(--dsw-radius-sm)}",
+			".cli-quota-dock-refresh:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}",
+			".cli-quota-dock-refresh:disabled{opacity:.4;cursor:default}",
+			".cli-quota-dock-text{margin:0;max-height:96px;overflow:auto;white-space:pre-wrap;font-family:var(--dsw-font-mono);font-size:11px;line-height:1.55;color:var(--dsw-alias-label-secondary)}",
+			".cli-quota-dock-hint{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}"
 		].join("\n");
 		//#endregion
 		//#region mode menu marks
@@ -1373,6 +1430,14 @@ window.__ModuleLoader__.load({
 				for (const stop of stops) if (typeof stop === "function") stop();
 			};
 		}
+		function mountQuotaDock(ctx) {
+			if (typeof ctx.slots?.inject !== "function") return () => {};
+			return ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
+				name: "conversation.input.dock",
+				id: "cli-quota",
+				order: 21
+			}, QuotaDock));
+		}
 		function decorateResume(ctx) {
 			const command = ctx.get("commandUi");
 			const sessions = ctx.sessions;
@@ -1445,6 +1510,7 @@ window.__ModuleLoader__.load({
 			ctx.effect(() => decorateResume(ctx), "dsh-cli-bridge: /resume");
 			ctx.effect(() => addStyle("resume.css", RESUME_CSS), "dsh-cli-bridge: resume bar");
 			ctx.effect(() => mountResumeSurface(ctx), "dsh-cli-bridge: resume surface");
+			ctx.effect(() => mountQuotaDock(ctx), "dsh-cli-bridge: quota dock");
 			ctx.effect(() => paintSlashIcons(ctx.get("inputTriggers")), "dsh-cli-bridge: slash icons");
 		}
 		/** Skill rows and /resume borrow the same glyphs the rest of the slash menu uses. */
