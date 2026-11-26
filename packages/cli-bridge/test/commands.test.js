@@ -29,6 +29,30 @@ test('Codex registers no native commands, no cli-compact, and the plan/quota com
   assert.deepEqual(names.sort(), ['agent', 'codex-plan', 'quota', 'resume'].sort())
 })
 
+test('/codex-plan queues a turn instead of awaiting app-server', async () => {
+  const definitions = []
+  const ctx = {
+    on() {},
+    effect() {},
+    commands: { register(definition) { definitions.push(definition) } },
+    skills: undefined,
+  }
+  apply(ctx, { backend: 'codex' })
+  const command = definitions.find((definition) => definition.name === 'codex-plan')
+  assert.ok(command)
+  const steered = []
+  const session = { id: 'session-1', header: { cwd: process.cwd() }, snapshotEvents: () => [], append() {} }
+  const result = await command.handler({
+    agent: { session, steer(message) { steered.push(message) } },
+    rawInput: 'inspect the repository',
+    signal: new AbortController().signal,
+  })
+  assert.equal(result.kind, 'success')
+  assert.equal(steered.length, 1)
+  assert.equal(steered[0].role, 'user')
+  assert.match(steered[0].content[0].text, /inspect the repository/)
+})
+
 test('CodeBuddy forwards its documented local commands and offers cli-compact', () => {
   const names = commandNames('codebuddy')
   assert.ok(names.includes('resume'))

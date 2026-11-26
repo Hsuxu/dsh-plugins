@@ -1,7 +1,7 @@
 /**
  * Codex Plan mode state, persisted as a plugin record and replayed into the
- * `cliPlan` session projection. The plan text is deliberately kept out of the
- * model transcript: it belongs to the command card and the plan dock.
+ * `cliPlan` session projection. The plan text is streamed into the transcript
+ * by the driver and reviewed through the native DSH plan-review popup.
  */
 export const PLAN_EVENT = 'plugin:dsh-cli-bridge/plan'
 export const PLAN_PROJECTION_KEY = 'cliPlan'

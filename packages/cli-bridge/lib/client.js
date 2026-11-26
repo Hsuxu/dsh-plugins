@@ -536,167 +536,34 @@ window.__ModuleLoader__.load({
 						h("div", { className: "cli-quota-note", "data-error": true }, state.message)));
 		}
 
-		let rootCtx = null;
 		function planCopy(zh) {
 			return zh ? {
-				kicker: "Codex 规划",
-				pending: "Codex 正在规划…",
-				ready: "规划已就绪，等待确认",
-				approve: "批准并实施",
-				keep: "继续规划",
-				exit: "退出规划",
-				empty: "暂无规划。",
-				failed: "Codex 规划失败",
-				running: "正在规划…",
-				done: "规划",
-				chipPending: "规划中…",
-				chipReview: "待批准",
-				chipActive: "Codex 规划",
-				reviewTitle: "Codex 规划",
-				reviewHint: "审阅计划后选择批准或继续规划。",
-				openReview: "查看规划",
-				noPlan: "计划尚未生成。"
+				chipPending: "Codex 规划中…",
+				chipReview: "Codex 计划待审阅",
+				chipActive: "Codex 规划"
 			} : {
-				kicker: "Codex Plan",
-				pending: "Codex is planning…",
-				ready: "Plan ready for review",
-				approve: "Approve & implement",
-				keep: "Keep planning",
-				exit: "Exit plan",
-				empty: "No plan yet.",
-				failed: "Codex Plan failed",
-				running: "Planning…",
-				done: "Plan",
-				chipPending: "Planning…",
-				chipReview: "Review",
-				chipActive: "Codex Plan",
-				reviewTitle: "Codex Plan",
-				reviewHint: "Review the plan, then approve or keep planning.",
-				openReview: "View plan",
-				noPlan: "No plan yet."
+				chipPending: "Codex planning…",
+				chipReview: "Codex plan ready",
+				chipActive: "Codex plan"
 			};
 		}
-		function planTitleOf(markdown) {
-			const line = String(markdown || "").split("\n").map((value) => value.trim()).find(Boolean) || "";
-			return line.replace(/^#+\s*/, "").slice(0, 120) || planCopy(isZh()).reviewTitle;
-		}
-		function openPlanReview(ctx, sessionId, plan) {
-			if (!plan || typeof plan.plan !== "string" || !plan.plan.trim()) return;
-			const sidebar = ctx.sidebarRight;
-			if (!sidebar || typeof sidebar.openResource !== "function") return;
-			const requestId = plan.requestId || String(Date.now());
-			sidebar.openResource(`dsh-resource://codex-plan/${sessionId}/${requestId}`, {
-				params: {
-					codexPlan: {
-						sessionId,
-						requestId,
-						title: planTitleOf(plan.plan),
-						plan: plan.plan
-					}
-				}
-			});
-		}
-		/** Compact status chip in the composer tool row, shaped after DSH's own plan chip. */
-		function PlanChip({ useProjection, sessionId, onOpen }) {
+		/** Read-only status chip; the native DSH plan-review popup owns review. */
+		function PlanChip({ useProjection }) {
 			const preset = useProjection("agentPreset");
 			const plan = useProjection("cliPlan");
-			const opened = React.useRef("");
 			const backend = typeof preset === "string" && preset.startsWith("cli-") ? preset.slice("cli-".length) : "";
-			React.useEffect(() => {
-				if (backend !== "codex" || !plan || !plan.reviewPending || !plan.plan || !plan.requestId) return;
-				if (opened.current === plan.requestId) return;
-				opened.current = plan.requestId;
-				if (typeof onOpen === "function") onOpen(plan);
-			}, [backend, plan, onOpen]);
 			if (backend !== "codex" || !plan || !(plan.active || plan.pending || plan.reviewPending)) return null;
 			const copy = planCopy(isZh());
 			const state = plan.pending ? "pending" : plan.reviewPending ? "review" : "active";
 			const label = plan.pending ? copy.chipPending : plan.reviewPending ? copy.chipReview : copy.chipActive;
-			return h("button", {
-				type: "button",
+			return h("span", {
 				className: "cli-plan-chip",
 				"data-cli-plan": "chip",
 				"data-state": state,
-				title: plan.reviewPending ? copy.openReview : label,
-				onClick: () => {
-					if (typeof onOpen === "function") onOpen(plan);
-				}
+				title: label
 			},
 				h("span", { className: "cli-plan-chip-mark", "aria-hidden": "true" }, "◆"),
 				h("span", null, label));
-		}
-		/** Plan document in the right sidebar; approval lives here, not in the transcript. */
-		function PlanReview({ useTabInfo }) {
-			const info = typeof useTabInfo === "function" ? useTabInfo() : undefined;
-			const params = info?.tab?.navigation?.params?.codexPlan;
-			const [busy, setBusy] = React.useState(false);
-			const [error, setError] = React.useState("");
-			const copy = planCopy(isZh());
-			const close = () => {
-				try {
-					info?.tab?.actions?.close?.();
-				} catch {}
-			};
-			const focus = () => {
-				try {
-					document.querySelector("textarea")?.focus();
-				} catch {}
-			};
-			const run = (line, after) => {
-				if (busy) return;
-				if (!params?.sessionId) {
-					setError("No session is attached to this plan.");
-					return;
-				}
-				const commands = rootCtx?.remote?.commands;
-				if (!commands || typeof commands.execute !== "function") {
-					setError("Commands are unavailable.");
-					return;
-				}
-				setBusy(true);
-				setError("");
-				Promise.resolve(commands.execute(params.sessionId, line, [])).then((result) => {
-					if (result?.ok) after?.();
-					else setError(result?.error?.message || "Command failed.");
-				}, (reason) => setError(reason instanceof Error ? reason.message : String(reason))).finally(() => setBusy(false));
-			};
-			if (!params) return h("div", { className: "cli-plan-review-empty" }, copy.noPlan);
-			return h("section", {
-				className: "cli-plan-review",
-				"data-cli-plan": "review",
-				"data-state": "review"
-			},
-				h("header", { className: "cli-plan-review-head" },
-					h("span", { className: "cli-plan-review-mark", "aria-hidden": "true" }, "◆"),
-					h("span", { className: "cli-plan-review-title" }, params.title || copy.reviewTitle),
-					h("span", { className: "cli-plan-review-hint" }, copy.reviewHint)),
-				h("div", { className: "cli-plan-review-body" }, h("pre", { className: "cli-plan-review-text" }, params.plan)),
-				error ? h("div", { className: "cli-plan-review-error", role: "status" }, error) : null,
-				h("footer", { className: "cli-plan-review-actions" },
-					h("button", {
-						type: "button",
-						className: "cli-plan-approve",
-						disabled: busy,
-						onClick: () => run("/codex-plan approve", close)
-					}, copy.approve),
-					h("button", {
-						type: "button",
-						disabled: busy,
-						onClick: () => {
-							close();
-							focus();
-						}
-					}, copy.keep),
-					h("button", {
-						type: "button",
-						disabled: busy,
-						onClick: () => run("/codex-plan off", close)
-					}, copy.exit)));
-		}
-		function PlanReviewTitle({ useTabInfo }) {
-			const info = typeof useTabInfo === "function" ? useTabInfo() : undefined;
-			const params = info?.tab?.navigation?.params?.codexPlan;
-			return h("span", null, params?.title || planCopy(isZh()).reviewTitle);
 		}
 
 		function makeAgentPage(agent) {
@@ -1725,39 +1592,13 @@ window.__ModuleLoader__.load({
 				order: 21
 			}, QuotaDock));
 		}
-		function mountPlanUi(ctx) {
+		function mountPlanChip(ctx) {
 			if (typeof ctx.slots?.inject !== "function") return () => {};
-			const stops = [];
-			const tabs = ctx.sidebarRightTabs;
-			if (tabs && typeof tabs.register === "function") {
-				stops.push(tabs.register({
-					id: "dsh-cli-bridge",
-					kind: "codex-plan",
-					patterns: ["dsh-resource://codex-plan/**"],
-					priority: "extension",
-					title: () => planCopy(isZh()).reviewTitle,
-					canOpen: () => true
-				}));
-			}
-			stops.push(ctx.slots.inject("conversation.input.left", () => ctx.slots.register({
+			return ctx.slots.inject("conversation.input.left", () => ctx.slots.register({
 				name: "conversation.input.left",
 				id: "cli-plan",
-				order: 10,
-				inject: (sessionId) => ({
-					onOpen: (plan) => openPlanReview(ctx, sessionId, plan)
-				})
-			}, PlanChip)));
-			stops.push(ctx.slots.inject("sidebar.right.pane.tab", () => ctx.slots.register({
-				name: "sidebar.right.pane.tab",
-				key: "dsh-cli-bridge"
-			}, PlanReview)));
-			stops.push(ctx.slots.inject("sidebar.right.pane.tab.title", () => ctx.slots.register({
-				name: "sidebar.right.pane.tab.title",
-				key: "dsh-cli-bridge"
-			}, PlanReviewTitle)));
-			return () => {
-				for (const stop of stops) if (typeof stop === "function") stop();
-			};
+				order: 10
+			}, PlanChip));
 		}
 		function decorateResume(ctx) {
 			const command = ctx.get("commandUi");
@@ -1805,7 +1646,7 @@ window.__ModuleLoader__.load({
 				}
 			});
 		}
-		const inject = ["slots", "locale", "configForms", "remote", "remote.commands", "remote.session", "commandUi", "sessions", "inputTriggers", "sidebarRight", "sidebarRightTabs"];
+		const inject = ["slots", "locale", "configForms", "remote", "remote.session", "commandUi", "sessions", "inputTriggers"];
 		function apply(ctx) {
 			rootCtx = ctx;
 			ctx.effect(() => addStyle("model-brand.css", labelCss()), "dsh-cli-bridge: model brand marks");
@@ -1834,7 +1675,7 @@ window.__ModuleLoader__.load({
 			ctx.effect(() => addStyle("plan.css", PLAN_CSS), "dsh-cli-bridge: plan chip and review");
 			ctx.effect(() => mountResumeSurface(ctx), "dsh-cli-bridge: resume surface");
 			ctx.effect(() => mountQuotaDock(ctx), "dsh-cli-bridge: quota dock");
-			ctx.effect(() => mountPlanUi(ctx), "dsh-cli-bridge: plan review");
+			ctx.effect(() => mountPlanChip(ctx), "dsh-cli-bridge: plan chip");
 			ctx.effect(() => paintSlashIcons(ctx.get("inputTriggers")), "dsh-cli-bridge: slash icons");
 		}
 		/** Skill rows and /resume borrow the same glyphs the rest of the slash menu uses. */
