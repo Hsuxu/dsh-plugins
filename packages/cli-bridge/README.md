@@ -62,10 +62,12 @@ The composer forwards commands to the running CLI:
   Code reads the OAuth usage endpoint. The settings page shows the same snapshot
   with a refresh button.
 - `/codex-plan <task>` — run the task through Codex's native Plan collaboration
-  mode (`codex app-server`, read-only sandbox). The plan appears as a transcript
-  card and in the plan bar above the composer. `/codex-plan approve` sends the
-  approved plan back as the implementation turn; `/codex-plan off` exits plan
-  mode. Plan state is recorded in the session log and survives a DSH restart.
+  mode (`codex app-server`, read-only sandbox). The task starts a normal DSH
+  turn: Codex's plan text streams into the conversation, then DSH's native plan
+  review popup appears with Approve / Keep planning. Approve sends the plan back
+  as the implementation turn; Keep planning returns your feedback to Codex for
+  another pass; `/codex-plan off` aborts. Plan state is recorded in the session
+  log and survives a DSH restart.
 - **Verified native commands** — only commands that run in the CLI's print mode
   are registered (see the next section). Model choice stays in the DSH model
   picker, so `/model` is DSH's own command.

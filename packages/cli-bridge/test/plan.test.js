@@ -34,7 +34,8 @@ test('latestPlanEvent reads the last plan record from the session log', () => {
 })
 
 test('CodexPlanStream prefers the completed plan item and records usage', async () => {
-  const stream = new CodexPlanStream()
+  const updates = []
+  const stream = new CodexPlanStream({ onUpdate: (update) => updates.push(update.content.text) })
   stream.push('item/plan/delta', { delta: 'draft' })
   stream.push('item/agentMessage/delta', { delta: 'fallback' })
   stream.push('item/completed', { item: { type: 'plan', text: '# Final plan\n\n1. Ship it' } })
@@ -46,6 +47,16 @@ test('CodexPlanStream prefers the completed plan item and records usage', async 
   assert.equal(stream.text(), '# Final plan\n\n1. Ship it')
   assert.equal(stream.usage.totalTokens, 16)
   assert.equal(stream.failure(), undefined)
+  assert.deepEqual(updates, ['draft'])
+})
+
+test('CodexPlanStream emits the completed plan when no deltas arrived', async () => {
+  const updates = []
+  const stream = new CodexPlanStream({ onUpdate: (update) => updates.push(update.content.text) })
+  stream.push('item/completed', { item: { type: 'plan', text: '# Final plan' } })
+  stream.push('turn/completed', { turn: { status: 'completed' } })
+  await stream.done
+  assert.deepEqual(updates, ['# Final plan'])
 })
 
 test('CodexPlanStream reports a failed turn', async () => {

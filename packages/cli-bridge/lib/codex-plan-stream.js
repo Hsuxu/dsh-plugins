@@ -4,17 +4,26 @@
  * for older servers that do not emit a completed plan item.
  */
 export class CodexPlanStream {
-  constructor() {
+  constructor({ onUpdate } = {}) {
+    this.onUpdate = onUpdate
     this.plan = ''
     this.message = ''
+    this.streamed = ''
     this.completed = false
     this.turn = null
     this.usage = null
     this.error = null
+    this.lastEventAt = Date.now()
     this.done = new Promise((resolve, reject) => {
       this.#resolve = resolve
       this.#reject = reject
     })
+  }
+
+  #delta(text) {
+    if (!text) return
+    this.streamed += text
+    this.onUpdate?.({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } })
   }
 
   #resolve
@@ -33,17 +42,23 @@ export class CodexPlanStream {
   }
 
   push(method, params = {}) {
+    this.lastEventAt = Date.now()
     switch (method) {
-      case 'item/plan/delta':
-        this.plan += String(params.delta ?? '')
+      case 'item/plan/delta': {
+        const delta = String(params.delta ?? '')
+        this.plan += delta
+        this.#delta(delta)
         break
+      }
       case 'item/agentMessage/delta':
         this.message += String(params.delta ?? '')
         break
       case 'item/completed': {
         const item = params.item ?? {}
-        if (item.type === 'plan' && typeof item.text === 'string') this.plan = item.text
-        else if (item.type === 'agentMessage' && typeof item.text === 'string') this.message = item.text
+        if (item.type === 'plan' && typeof item.text === 'string') {
+          this.plan = item.text
+          if (this.streamed.trim() === '') this.#delta(item.text)
+        } else if (item.type === 'agentMessage' && typeof item.text === 'string') this.message = item.text
         break
       }
       case 'turn/plan/updated': {
@@ -55,11 +70,16 @@ export class CodexPlanStream {
       case 'thread/tokenUsage/updated':
         this.usage = params.tokenUsage?.total ?? this.usage
         break
-      case 'turn/completed':
+      case 'turn/completed': {
         this.turn = params.turn ?? null
         this.completed = true
+        if (this.streamed.trim() === '') {
+          const text = this.text()
+          if (text) this.#delta(text)
+        }
         this.#resolve(this.turn)
         break
+      }
       case 'error':
         this.error = String(params.message ?? params.error?.message ?? 'Codex app-server error')
         this.#reject(new Error(this.error))

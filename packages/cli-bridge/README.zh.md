@@ -56,9 +56,10 @@ Bridge → 对应行）会显示 CLI 是否可运行、模型数量以及安装/
   `codex app-server` 的 `account/rateLimits/read` 读取；Claude Code 读取 OAuth
   用量接口。设置页也会显示同一份快照，并提供刷新按钮。
 - `/codex-plan <任务>` —— 通过 Codex 原生的 Plan 协作模式（`codex app-server`，
-  只读沙箱）执行任务。规划会显示为会话记录中的卡片，以及输入框上方的规划栏。
-  `/codex-plan approve` 会把批准的规划作为实施轮次发回；`/codex-plan off` 退出
-  规划模式。规划状态记录在会话日志中，DSH 重启后仍然保留。
+  只读沙箱）执行任务。任务会启动一个普通 DSH 回合：Codex 的规划文本流式输出
+  到会话框，结束后弹出 DSH 原生的计划审阅（批准 / 继续规划）。批准会把规划作为
+  实施轮次发回；继续规划会把反馈交回 Codex 再生成一版；`/codex-plan off` 中止。
+  规划状态记录在会话日志中，DSH 重启后仍然保留。
 - **已验证的原生命令** —— 只注册在该 CLI 无头/print 模式下确实能执行的命令
   （见下一节）。模型选择仍由 DSH 的模型选择器负责，因此 `/model` 是 DSH 自己的
   命令。

@@ -1,6 +1,10 @@
 /** Minimal doubles of the DSH LLM helpers used at import time. */
 export class LlmAdapter {}
 
+export function createUserMessage(message) {
+  return { id: 'test-user-message', role: 'user', ...message }
+}
+
 export class AssistantStreamAccumulator {
   constructor() {
     this.events = []

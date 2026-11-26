@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { agentEvents } from '@deepseek-ai/dsh-agent'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { BACKENDS, COMMAND_SUPPORT, currentBackend, isAuthError, isMissingCommand, nativeCommands, printForce } from './backends.js'
 import { firstListedModel } from './catalog.js'
 import { ClaudeStream } from './claude-stream.js'
@@ -240,6 +241,7 @@ export function apply(ctx, config = {}) {
   const active = new WeakMap()
   const completed = new WeakMap()
   const planAborts = new Map()
+  const planSessions = new Map()
 
   // The loop treats our empty admission as a completed turn and retires its
   // driver before checking the inbox. Wake the existing input after that boundary.
@@ -365,34 +367,49 @@ export function apply(ctx, config = {}) {
     return { model: backend.model }
   }
 
-  /** Run one Codex app-server turn in Plan collaboration mode. */
-  async function planTurn(agent, task, signal, record) {
+  async function closePlanSession(sessionId) {
+    const state = planSessions.get(sessionId)
+    if (!state) return
+    planSessions.delete(sessionId)
+    await state.client.close().catch(() => {})
+  }
+
+  /** One app-server turn in Plan collaboration mode, streamed into `writer`. */
+  async function planTurn(agent, task, signal, record, writer) {
     const session = agent.session
     const cwd = session.header?.cwd ?? process.cwd()
     backend = currentBackend(backendId)
     const { model, effort } = selectedModel(agent)
-    const runModel = String(model || backend.defaultModel || firstListedModel(backend.id) || backend.model || 'gpt-5.1-codex')
-    const stream = new CodexPlanStream()
-    const client = new CodexAppClient({
-      backend,
-      cwd,
-      onNotification: (method, params) => stream.push(method, params),
-      name: 'dsh-cli-bridge',
-      version: '0.1.0',
-    })
-    let threadId
-    try {
-      await client.start()
-      const thread = await client.request('thread/start', {
+    const runModel = String(model || backend.defaultModel || firstListedModel(backend.id) || backend.model || 'gpt-6.1-sol')
+    let state = planSessions.get(session.id)
+    if (!state || state.backendId !== backend.id) {
+      const client = new CodexAppClient({
+        backend,
         cwd,
-        model: runModel,
-        sandbox: 'read-only',
-        approvalPolicy: 'never',
-      }, 30_000)
-      threadId = thread?.thread?.id ?? thread?.id
-      if (typeof threadId !== 'string' || !threadId) throw new Error('Codex app-server returned no thread id')
+        onNotification: () => {},
+        name: 'dsh-cli-bridge',
+        version: '0.1.0',
+      })
+      state = { client, backendId: backend.id, cwd, runModel, threadId: null }
+      planSessions.set(session.id, state)
+    }
+    const client = state.client
+    const stream = new CodexPlanStream({ onUpdate: (update) => writer.update(update) })
+    client.onNotification = (method, params) => stream.push(method, params)
+    try {
+      if (state.threadId === null) {
+        await client.start()
+        const thread = await client.request('thread/start', {
+          cwd,
+          model: runModel,
+          sandbox: 'read-only',
+          approvalPolicy: 'never',
+        }, 30_000)
+        state.threadId = thread?.thread?.id ?? thread?.id
+        if (typeof state.threadId !== 'string' || !state.threadId) throw new Error('Codex app-server returned no thread id')
+      }
       const started = await client.request('turn/start', {
-        threadId,
+        threadId: state.threadId,
         input: [{ type: 'text', text: task }],
         collaborationMode: {
           mode: 'plan',
@@ -400,23 +417,74 @@ export function apply(ctx, config = {}) {
         },
         approvalPolicy: 'never',
         sandboxPolicy: { type: 'readOnly' },
-      }, 0)
+      }, 30_000)
       const turnId = started?.turn?.id
       if (typeof turnId !== 'string' || !turnId) throw new Error('Codex app-server returned no turn id')
-      await waitFor(stream.done, signal, () => {
-        void client.request('turn/interrupt', { threadId, turnId }, 10_000).catch(() => {})
+      await waitForPlan(stream, signal, () => {
+        void client.request('turn/interrupt', { threadId: state.threadId, turnId }, 10_000).catch(() => {})
       })
       const failure = stream.failure()
       if (failure !== undefined) throw new Error(failure)
       const plan = stream.text()
       if (!plan) throw new Error('Codex plan turn completed without plan text')
-      return { threadId, plan }
-    } finally {
-      await client.close().catch(() => {})
+      return { threadId: state.threadId, plan }
+    } catch (error) {
+      await closePlanSession(session.id)
+      throw error
     }
   }
 
-  /** `/codex-plan <task>`, `/codex-plan approve`, `/codex-plan off`. */
+  /** Wait for a plan turn with an idle and total deadline. */
+  async function waitForPlan(stream, signal, onAbort) {
+    let totalTimer
+    let idleTimer
+    let rejectDeadline
+    const deadline = new Promise((_, reject) => {
+      rejectDeadline = reject
+      totalTimer = setTimeout(() => reject(new Error('Codex plan timed out after 10 minutes')), 10 * 60 * 1000)
+      idleTimer = setInterval(() => {
+        if (Date.now() - stream.lastEventAt > 2 * 60 * 1000) reject(new Error('Codex plan stalled: no app-server event for 2 minutes'))
+      }, 15 * 1000)
+    })
+    try {
+      await waitFor(Promise.race([stream.done, deadline]), signal, onAbort)
+    } finally {
+      clearTimeout(totalTimer)
+      clearInterval(idleTimer)
+      rejectDeadline?.(new Error('plan settled'))
+    }
+  }
+
+  /** Native DSH plan-review popup. Approve and Keep planning use the same labels as dsh-plan-mode. */
+  async function reviewPlan(agent, plan, signal) {
+    const interaction = ctx.get('userQuestions')
+    if (interaction === undefined) throw new Error('no user-questions channel is available to review the Codex plan')
+    try {
+      const answer = await interaction.ask({
+        agent,
+        signal,
+        questions: [{
+          id: 'plan-review',
+          header: 'Plan review',
+          question: 'Approve this plan and leave plan mode?',
+          detail: plan,
+          options: [
+            { label: 'Approve', description: 'Leave plan mode; implement the plan from the next step.' },
+            { label: 'Keep planning', description: 'Stay in plan mode; feedback goes back to Codex.' },
+          ],
+          intent: { kind: 'plan-review', approve: 'Approve' },
+        }],
+      })
+      const item = answer.answers.find((entry) => entry.id === 'plan-review')
+      const approved = item?.selected?.length === 1 && item.selected[0] === 'Approve' && item.custom === undefined
+      return { approved, feedback: approved ? '' : String(item?.custom ?? '') }
+    } catch (error) {
+      if (error?.code === 'ASK_CANCELLED' || signal.aborted) return { dismissed: true }
+      throw error
+    }
+  }
+
+  /** `/codex-plan <task>` starts a real turn; the pre-step below streams and reviews the plan. */
   async function handleCodexPlan({ agent, rawInput, signal, record }) {
     const session = agent.session
     const task = String(rawInput ?? '').trim()
@@ -425,6 +493,7 @@ export function apply(ctx, config = {}) {
     if (task === 'off') {
       planAborts.get(session.id)?.abort()
       planAborts.delete(session.id)
+      await closePlanSession(session.id)
       record(session, PLAN_EVENT, {
         active: false,
         pending: false,
@@ -455,6 +524,7 @@ export function apply(ctx, config = {}) {
         content: [{ type: 'text', text: `The plan is approved. Implement it now, following it exactly:\n\n${plan}` }],
         source: { kind: 'user' },
       })
+      await closePlanSession(session.id)
       return { kind: 'success', text: 'Plan approved. Implementing it now.' }
     }
     if (state?.pending) return { kind: 'error', text: 'Codex is already planning; wait for the plan or /codex-plan off.' }
@@ -471,35 +541,80 @@ export function apply(ctx, config = {}) {
       requestId,
       updatedAt: Date.now(),
     })
-    try {
-      const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal
-      const result = await planTurn(agent, task, combined, record)
+    agent.steer(createUserMessage({
+      content: [{ type: 'text', text: task }],
+      source: { kind: 'user' },
+    }))
+    return { kind: 'success', text: 'Codex plan started; the plan will stream into this conversation.' }
+  }
+
+  /** Stream one or more plan attempts, then ask the native DSH review. */
+  async function runPlanFlow(agent, messages, turn, signal, record) {
+    let current = messages
+    let step = 0
+    let task = messages.map((message) => (message.content ?? []).filter((part) => part.type === 'text').map((part) => part.text).join('\n')).join('\n\n').trim()
+    for (;;) {
+      signal.throwIfAborted()
+      const session = agent.session
+      backend = currentBackend(backendId)
+      const { model, effort } = selectedModel(agent)
+      const runModel = String(model || backend.defaultModel || firstListedModel(backend.id) || backend.model || 'gpt-6.1-sol')
+      const writer = new TurnWriter({ session, turn, step, provider: providerId(backend.id), model: runModel, cwd: session.header?.cwd, pace: true, live: liveStream(ctx, agent) })
+      writer.admit(current)
+      let result
+      try {
+        result = await planTurn(agent, task, signal, record, writer)
+      } finally {
+        await writer.drain().catch(() => {})
+        writer.finish()
+        step = writer.step
+      }
+      const plan = result.plan
       record(session, PLAN_EVENT, {
         active: true,
         pending: false,
         reviewPending: true,
         threadId: result.threadId,
-        plan: result.plan,
-        requestId,
+        plan,
+        requestId: latestPlanEvent(session)?.requestId ?? null,
         updatedAt: Date.now(),
       })
-      return { kind: 'success', text: result.plan }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const review = await reviewPlan(agent, plan, signal)
+      if (review.dismissed) {
+        planAborts.delete(session.id)
+        await closePlanSession(session.id)
+        return
+      }
+      if (review.approved) {
+        planAborts.delete(session.id)
+        record(session, PLAN_EVENT, {
+          active: false,
+          pending: false,
+          reviewPending: false,
+          threadId: result.threadId,
+          plan,
+          requestId: latestPlanEvent(session)?.requestId ?? null,
+          approved: true,
+          updatedAt: Date.now(),
+        })
+        agent.followup({
+          content: [{ type: 'text', text: `The plan is approved. Implement it now, following it exactly:\n\n${plan}` }],
+          source: { kind: 'user' },
+        })
+        await closePlanSession(session.id)
+        return
+      }
+      task = review.feedback.trim() || 'Revise the plan based on the review; present the updated plan.'
+      current = [createUserMessage({ content: [{ type: 'text', text: task }], source: { kind: 'user' } })]
       record(session, PLAN_EVENT, {
-        active: false,
-        pending: false,
+        active: true,
+        pending: true,
         reviewPending: false,
-        threadId: null,
+        threadId: result.threadId,
         plan: '',
-        requestId,
+        requestId: latestPlanEvent(session)?.requestId ?? null,
         updatedAt: Date.now(),
-        error: message,
       })
-      record(session, RECORD_TRACE, { backend: backend.id, model: null, error: message })
-      return { kind: 'error', text: controller.signal.aborted ? 'Codex Plan cancelled.' : `Codex Plan failed: ${message}` }
-    } finally {
-      if (planAborts.get(session.id) === controller) planAborts.delete(session.id)
     }
   }
 
@@ -554,6 +669,40 @@ export function apply(ctx, config = {}) {
       return admitted
     }
     const session = agent.session
+    const planState = latestPlanEvent(session)
+    if (backendId === 'codex' && planState?.active && !planState.reviewPending) {
+      const interrupt = new AbortController()
+      active.set(agent, interrupt)
+      const planAbort = planAborts.get(session.id)?.signal
+      const signal = planAbort
+        ? AbortSignal.any([turnSignal, interrupt.signal, lifetime.signal, planAbort])
+        : AbortSignal.any([turnSignal, interrupt.signal, lifetime.signal])
+      try {
+        await runPlanFlow(agent, messages, turn, signal, record)
+      } catch (error) {
+        if (!signal.aborted) {
+          const message = error instanceof Error ? error.message : String(error)
+          record(session, PLAN_EVENT, {
+            active: false,
+            pending: false,
+            reviewPending: false,
+            threadId: planState.threadId ?? null,
+            plan: planState.plan ?? '',
+            requestId: planState.requestId ?? null,
+            updatedAt: Date.now(),
+            error: message,
+          })
+          record(session, RECORD_TRACE, { backend: 'codex', model: null, error: message })
+          planAborts.delete(session.id)
+          await closePlanSession(session.id)
+          throw turnError(error, currentBackend('codex'))
+        }
+      } finally {
+        active.delete(agent)
+        completed.set(agent, turnSignal)
+      }
+      return admitted
+    }
     let step = 0
     try {
       do {
@@ -606,6 +755,7 @@ export function apply(ctx, config = {}) {
   ctx.effect(() => async () => {
     for (const controller of planAborts.values()) controller.abort()
     planAborts.clear()
+    for (const id of [...planSessions.keys()]) await closePlanSession(id)
     lifetime.abort()
   }, 'dsh-cli-bridge: stop external processes')
 }
