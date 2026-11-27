@@ -84,7 +84,7 @@ Bridge → 对应行）会显示 CLI 是否可运行、模型数量以及安装/
 | `/quota` | 订阅额度 | 订阅额度 | `/usage` 额度 | — |
 | `/codex-plan` | — | 原生 Plan 模式 | — | — |
 | `/cli-compact` | 转发（已实测） | — | 转发（已实测） | 转发（文档说明） |
-| `/config`、`/usage`、`/context`、`/cost` | 转发（已实测） | — | `/config`、`/usage`、`/cost` 已实测 | `/config`、`/context`、`/cost` 有文档 |
+| `/config`、`/usage`、`/context`、`/cost` | 转发（已实测） | — | `/config`、`/usage` 已实测；`/cost` 不是 `agy` 命令 | `/config`、`/context`、`/cost` 有文档 |
 | `/agents`、`/changelog`、`/credits`、`/hooks`、`/permissions`、`/plugin`、`/skills` | — | — | 转发（已实测） | — |
 | `/status`、`/context`、`/help` | print 模式下**不可用** | `codex exec` 没有斜杠命令层 | 不是 print 模式命令 | 文档称 print 模式会展开 |
 | `/compact` | DSH 自身压缩（不影响 CLI 上下文） | 同上 | 同上 | 同上 |
@@ -105,7 +105,8 @@ Bridge → 对应行）会显示 CLI 是否可运行、模型数量以及安装/
   `plugin`、`skills`、`usage`；`/compact` 会作为系统命令展开。`/status`、
   `/context` 在 print 模式下不可用，因此不注册。模型 id（例如
   `gemini-4-neon-high`）已带 effort；DSH 传显式 `--effort` 时插件会去掉后缀，
-  避免两者冲突。
+  避免两者冲突。不带后缀的 `gemini-pro-orchestrator*` 不接受 `--effort`，因此
+  不提供 effort 选项。
 - **CodeBuddy**：2.185.0 会在 print 模式的 `init` 事件里列出可用的斜杠命令；转发
   名单来自该列表，实际执行尚未验证。print 模式无法完成交互式登录：先运行一次
   `codebuddy` 并输入 `/login`，或在 DSH 进程环境中设置 `CODEBUDDY_API_KEY`

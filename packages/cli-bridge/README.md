@@ -94,7 +94,7 @@ else is still reachable through `/agent`.
 | `/quota` | subscription usage | subscription usage | `/usage` quota | — |
 | `/codex-plan` | — | native Plan mode | — | — |
 | `/cli-compact` | forwarded (verified) | — | forwarded (verified) | forwarded (documented) |
-| `/config`, `/usage`, `/context`, `/cost` | forwarded (verified) | — | `/config`, `/usage`, `/cost` verified | `/config`, `/context`, `/cost` documented |
+| `/config`, `/usage`, `/context`, `/cost` | forwarded (verified) | — | `/config`, `/usage` verified; `/cost` is not an `agy` command | `/config`, `/context`, `/cost` documented |
 | `/agents`, `/changelog`, `/credits`, `/hooks`, `/permissions`, `/plugin`, `/skills` | — | — | forwarded (verified) | — |
 | `/status`, `/context`, `/help` | **not available** in print mode | no slash-command layer in `codex exec` | not print-mode commands | documented print expansion |
 | `/compact` | DSH's own compaction (does not compact CLI context) | same | same | same |
@@ -117,7 +117,9 @@ Details:
   system command. `/status` and `/context` are not available in print mode and
   are deliberately not registered. Model ids such as `gemini-4-neon-high`
   already carry an effort; the plugin strips the suffix when DSH supplies an
-  explicit `--effort` so the two cannot conflict.
+  explicit `--effort` so the two cannot conflict. The unsuffixed
+  `gemini-pro-orchestrator*` ids reject `--effort` entirely, so they offer no
+  effort choices.
 - **CodeBuddy**: 2.185.0 exposes its slash-command list in the print-mode `init`
   event. The forwarded names come from that list; execution has not been
   verified. Print mode cannot complete the interactive login: run `codebuddy`

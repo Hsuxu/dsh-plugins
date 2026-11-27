@@ -81,6 +81,16 @@ test('parseAgyModels reads slug and display name', () => {
   ])
   assert.equal(models[0].defaultEffort, 'xhigh')
   assert.deepEqual(models[0].efforts, ['xhigh'])
+  assert.deepEqual(models[1].efforts, ['high'])
+})
+
+test('an unsuffixed agy model takes no --effort', () => {
+  const agy = resolveBackend('antigravity')
+  const argv = agy.printArgv({ model: 'gemini-pro-orchestrator', effort: 'high', prompt: 'hi' })
+  assert.equal(argv[argv.indexOf('--model') + 1], 'gemini-pro-orchestrator')
+  assert.ok(!argv.includes('--effort'))
+  const models = parseAgyModels('gemini-pro-orchestrator  Orchestrator (Carbon)\n')
+  assert.deepEqual(models[0].efforts, [])
 })
 
 test('auth errors are recognized', () => {

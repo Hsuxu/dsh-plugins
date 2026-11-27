@@ -462,7 +462,6 @@ function windowLabel(minutes, fallback) {
   return `${Math.round(minutes)}-minute window`
 }
 
-/** Format the Codex `account/rateLimits/read` snapshot (tolerant of nesting). */
 /** `agy -p /usage --output-format json` prints a command payload. */
 export function formatAntigravityUsage(payload) {
   const data = payload?.result?.command?.data ?? payload?.command?.data ?? payload?.data

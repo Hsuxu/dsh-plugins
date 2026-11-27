@@ -59,12 +59,16 @@ const CODEX_MODELS = [
 
 const AGY_EFFORT_SUFFIX = /-(low|medium|high|xhigh|max)$/i
 
-/** A suffixed `agy models` id already encodes its effort; expose only that one. */
+/**
+ * A suffixed `agy models` id already encodes its effort; expose only that one.
+ * An unsuffixed id (the Orchestrator family) takes no `--effort` at all, so it
+ * offers none.
+ */
 function agyModelEffort(model) {
   const suffix = AGY_EFFORT_SUFFIX.exec(model.id)
   return suffix
     ? { ...model, efforts: [suffix[1].toLowerCase()], defaultEffort: suffix[1].toLowerCase() }
-    : { ...model, efforts: EFFORTS, defaultEffort: 'high' }
+    : { ...model, efforts: [] }
 }
 
 /** Antigravity's account-aware list, used when `agy models` cannot answer. */
@@ -293,16 +297,18 @@ export const BACKENDS = {
       argv: (bin, extra, { model, effort, resume, force, prompt, addDirs }) => {
         const suffix = model ? AGY_EFFORT_SUFFIX.exec(model) : null
         // A model id such as gemini-4-neon-high already encodes effort; pairing it
-        // with a different --effort is rejected by agy. Strip the suffix and let
-        // the explicit effort win, or keep the suffixed id when no effort is set.
+        // with --effort is rejected by agy. Strip the suffix and let the explicit
+        // effort win, or keep the suffixed id when no effort is set. An unsuffixed
+        // id (the Orchestrator family) rejects --effort outright, so drop it.
         const argvModel = suffix && effort ? model.slice(0, suffix.index) : model
+        const argvEffort = !model || suffix ? effort : undefined
         return [
           bin,
           ...extra,
           '--output-format',
           'stream-json',
           ...(argvModel ? ['--model', argvModel] : []),
-          ...(effort ? ['--effort', effort] : []),
+          ...(argvEffort ? ['--effort', argvEffort] : []),
           ...(addDirs?.length ? ['--add-dir', ...addDirs] : []),
           ...(resume ? ['--conversation', resume] : []),
           ...(force ? ['--dangerously-skip-permissions'] : []),
