@@ -57,10 +57,11 @@ The composer forwards commands to the running CLI:
   `--conversation`.
 - `/agent <line>` — send an arbitrary line to the CLI as the next prompt. Use it
   for commands or skills this plugin does not know about.
-- `/quota` — show the signed-in subscription quota for Claude Code or Codex.
-  Codex is read through `codex app-server` (`account/rateLimits/read`); Claude
-  Code reads the OAuth usage endpoint. The settings page shows the same snapshot
-  with a refresh button.
+- `/quota` — show the signed-in subscription quota for Claude Code, Codex, or
+  Antigravity. Codex is read through `codex app-server`
+  (`account/rateLimits/read`); Claude Code reads the OAuth usage endpoint;
+  Antigravity runs `agy -p /usage --output-format json`. The settings page shows
+  the same snapshot with a refresh button.
 - `/codex-plan <task>` — run the task through Codex's native Plan collaboration
   mode (`codex app-server`, read-only sandbox). The task starts a normal DSH
   turn: Codex's plan text streams into the conversation, then DSH's native plan
@@ -90,11 +91,12 @@ else is still reachable through `/agent`.
 | --- | --- | --- | --- | --- |
 | `/resume` | plugin | plugin | plugin | plugin |
 | `/agent <line>` | plugin | plugin | plugin | plugin |
-| `/quota` | subscription usage | subscription usage | — | — |
+| `/quota` | subscription usage | subscription usage | `/usage` quota | — |
 | `/codex-plan` | — | native Plan mode | — | — |
-| `/cli-compact` | forwarded (verified) | — | forwarded (documented) | forwarded (documented) |
-| `/config`, `/usage`, `/context`, `/cost` | forwarded (verified) | — | `/config`, `/usage`, `/context` documented | `/config`, `/context`, `/cost` documented |
-| `/status`, `/skills`, `/permissions`, `/help` | **not available** in print mode | no slash-command layer in `codex exec` | documented print expansion | documented print expansion |
+| `/cli-compact` | forwarded (verified) | — | forwarded (verified) | forwarded (documented) |
+| `/config`, `/usage`, `/context`, `/cost` | forwarded (verified) | — | `/config`, `/usage` verified; `/cost` is not an `agy` command | `/config`, `/context`, `/cost` documented |
+| `/agents`, `/changelog`, `/credits`, `/hooks`, `/permissions`, `/plugin`, `/skills` | — | — | forwarded (verified) | — |
+| `/status`, `/context`, `/help` | **not available** in print mode | no slash-command layer in `codex exec` | not print-mode commands | documented print expansion |
 | `/compact` | DSH's own compaction (does not compact CLI context) | same | same | same |
 | `/model` | DSH model picker | DSH model picker | DSH model picker | DSH model picker |
 
@@ -109,9 +111,15 @@ Details:
   with `collaborationMode: { mode: "plan" }` and a read-only sandbox, streams
   the plan item back, and stores it in the `cliPlan` session projection.
   Skills still work because the plugin injects their content.
-- **Antigravity**: the CLI documents slash-command expansion in print mode, but
-  this plugin does not bundle `agy`; that list is documented rather than
-  verified.
+- **Antigravity**: probed against `agy 1.5.18`. `/help` reports the print-mode
+  commands `agents`, `changelog`, `config`, `credits`, `effort`, `hooks`,
+  `permissions`, `plugin`, `skills`, and `usage`; `/compact` is expanded as a
+  system command. `/status` and `/context` are not available in print mode and
+  are deliberately not registered. Model ids such as `gemini-4-neon-high`
+  already carry an effort; the plugin strips the suffix when DSH supplies an
+  explicit `--effort` so the two cannot conflict. The unsuffixed
+  `gemini-pro-orchestrator*` ids reject `--effort` entirely, so they offer no
+  effort choices.
 - **CodeBuddy**: 2.185.0 exposes its slash-command list in the print-mode `init`
   event. The forwarded names come from that list; execution has not been
   verified. Print mode cannot complete the interactive login: run `codebuddy`
@@ -120,11 +128,12 @@ Details:
   edition).
 - **Quota**: Codex app-server returns the ChatGPT plan, its 5-hour/weekly
   windows, and lifetime/daily token usage. Claude Code reads the OAuth usage
-  endpoint and appends the local `/usage` token and cache counters. Neither
-  query starts a model turn. Claude Code behind a custom `ANTHROPIC_BASE_URL`
-  has no subscription quota to read; `/quota` explains that and still shows the
-  local token/cache line. The quota panel sits at the bottom of each settings
-  page.
+  endpoint and appends the local `/usage` token and cache counters. Antigravity
+  parses `agy /usage` into its Gemini and Claude/GPT model groups and 5-hour /
+  weekly windows. No query starts a model turn. Claude Code behind a custom
+  `ANTHROPIC_BASE_URL` has no subscription quota to read; `/quota` explains that
+  and still shows the local token/cache line. The quota panel sits at the bottom
+  of each settings page.
 - `/compact` is DSH's compaction of the DSH session log. The CLI keeps its own
   context store, so use `/cli-compact` to ask the CLI to compact it (where the
   CLI supports it). `/agent /compact` does the same.

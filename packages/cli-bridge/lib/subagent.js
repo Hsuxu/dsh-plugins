@@ -110,7 +110,7 @@ export function createCliSubagentProvider(backendId, home) {
             const stream = new STREAMS[backend.dialect]((update) => {
               if (update.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text') text += update.content.text
             }, { inputIncludesCache: backend.inputIncludesCache })
-            const argv = backend.printArgv({ model: backend.model ?? backend.defaultModel, effort: undefined, cwd, resume: undefined, force: printForce(backend), prompt: prompt.text })
+            const argv = backend.printArgv({ model: backend.model ?? backend.defaultModel, effort: undefined, cwd, resume: undefined, force: printForce(backend), prompt: prompt.text, addDirs: files.length ? [tmpdir()] : [] })
             const outcome = await runPrint({
               argv,
               cwd,

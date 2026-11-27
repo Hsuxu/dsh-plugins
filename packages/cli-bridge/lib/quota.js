@@ -18,6 +18,7 @@ const CAPTURE_TIMEOUT_MS = 15 * 1000
 export const QUOTA_SUPPORT = {
   'claude-code': true,
   codex: true,
+  antigravity: true,
 }
 
 const cache = new Map()
@@ -56,6 +57,7 @@ export async function queryQuota(backendId, options = {}) {
   try {
     if (backendId === 'claude-code') return remember(backendId, await claudeQuota(backend, options))
     if (backendId === 'codex') return remember(backendId, await codexQuota(backend, options))
+    if (backendId === 'antigravity') return remember(backendId, await antigravityQuota(backend, options))
     return remember(backendId, failure(backendId, `${backend.label} does not expose subscription quota.`))
   } catch (error) {
     return remember(backendId, failure(backendId, redactError(error)))
@@ -460,7 +462,65 @@ function windowLabel(minutes, fallback) {
   return `${Math.round(minutes)}-minute window`
 }
 
-/** Format the Codex `account/rateLimits/read` snapshot (tolerant of nesting). */
+/** `agy -p /usage --output-format json` prints a command payload. */
+export function formatAntigravityUsage(payload) {
+  const data = payload?.result?.command?.data ?? payload?.command?.data ?? payload?.data
+  const groups = Array.isArray(data?.groups) ? data.groups : []
+  const lines = []
+  for (const group of groups) {
+    const buckets = Array.isArray(group?.buckets) ? group.buckets : []
+    const parts = []
+    for (const bucket of buckets) {
+      const label = bucket?.name || bucket?.window || bucket?.id || 'Quota'
+      const fraction = Number(bucket?.remaining_fraction)
+      const percent = Number.isFinite(fraction) ? `${Math.round(fraction * 100)}%` : '?'
+      const reset = typeof bucket?.reset_time === 'string' && bucket.reset_time !== '1970-01-01T00:00:00Z'
+        ? ` (resets ${bucket.reset_time})`
+        : ''
+      parts.push(`${label}: ${percent} left${reset}`)
+    }
+    if (parts.length) lines.push(`${group?.name || 'Antigravity'}: ${parts.join(' · ')}`)
+  }
+  if (lines.length === 0 && typeof payload?.result?.response === 'string') lines.push(payload.result.response.trim())
+  return lines.join('\n')
+}
+
+async function antigravityQuota(backend) {
+  return new Promise((resolve, reject) => {
+    const child = spawnAgent([...backend.argv, '-p', '/usage', '--output-format', 'json'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, NO_COLOR: '1' },
+    })
+    let stdout = ''
+    let stderr = ''
+    const timer = setTimeout(() => {
+      void stopAgent(child, 3000)
+      reject(new Error('agy /usage timed out'))
+    }, CAPTURE_TIMEOUT_MS)
+    child.stdout.on('data', (chunk) => { stdout += chunk })
+    child.stderr.on('data', (chunk) => { stderr += chunk })
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      if (code !== 0 && !stdout.trim()) {
+        reject(new Error(stderr.trim() || `agy /usage exited with code ${code}`))
+        return
+      }
+      try {
+        resolve(formatAntigravityUsage(JSON.parse(stdout)))
+      } catch (error) {
+        reject(new Error(`could not parse agy /usage output: ${error instanceof Error ? error.message : String(error)}`))
+      }
+    })
+  }).then((text) => {
+    if (!text) throw new Error('agy /usage returned no quota data')
+    return { ok: true, backend: 'antigravity', text }
+  })
+}
+
 export function formatCodexRateLimits(limits, account, usage) {
   const snapshot =
     limits?.rateLimits ??

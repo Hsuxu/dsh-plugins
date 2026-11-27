@@ -191,7 +191,7 @@ window.__ModuleLoader__.load({
 		const AGENTS = [
 			{ id: "claude-code", label: "Claude Code", command: "claude", install: "npm install -g @anthropic-ai/claude-code", login: "claude auth login", quota: true },
 			{ id: "codex", label: "Codex", command: "codex", install: "npm install -g @openai/codex", login: "codex login", quota: true },
-			{ id: "antigravity", label: "Antigravity", command: "agy", install: "irm https://antigravity.google/cli/install.ps1 | iex", login: "agy acp --login" },
+			{ id: "antigravity", label: "Antigravity", command: "agy", install: "irm https://antigravity.google/cli/install.ps1 | iex", login: "agy acp --login", quota: true },
 			{ id: "codebuddy", label: "CodeBuddy", command: "codebuddy", install: "npm install -g @tencent-ai/codebuddy-code", login: "codebuddy" }
 		];
 		const en = {

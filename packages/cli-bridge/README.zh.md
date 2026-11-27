@@ -52,9 +52,10 @@ Bridge → 对应行）会显示 CLI 是否可运行、模型数量以及安装/
   后续轮次会传 `--resume`、`codex exec resume` 或 `--conversation`。
 - `/agent <内容>` —— 把任意一行作为下一轮提示词发给 CLI。插件不认识的命令或技能
   都可以用它。
-- `/quota` —— 查询 Claude Code 或 Codex 已登录账号的订阅额度。Codex 通过
-  `codex app-server` 的 `account/rateLimits/read` 读取；Claude Code 读取 OAuth
-  用量接口。设置页也会显示同一份快照，并提供刷新按钮。
+- `/quota` —— 查询 Claude Code、Codex 或 Antigravity 已登录账号的订阅额度。
+  Codex 通过 `codex app-server` 的 `account/rateLimits/read` 读取；Claude Code
+  读取 OAuth 用量接口；Antigravity 执行 `agy -p /usage --output-format json`。
+  设置页也会显示同一份快照，并提供刷新按钮。
 - `/codex-plan <任务>` —— 通过 Codex 原生的 Plan 协作模式（`codex app-server`，
   只读沙箱）执行任务。任务会启动一个普通 DSH 回合：Codex 的规划文本流式输出
   到会话框，结束后弹出 DSH 原生的计划审阅（批准 / 继续规划）。批准会把规划作为
@@ -80,11 +81,12 @@ Bridge → 对应行）会显示 CLI 是否可运行、模型数量以及安装/
 | --- | --- | --- | --- | --- |
 | `/resume` | 插件实现 | 插件实现 | 插件实现 | 插件实现 |
 | `/agent <内容>` | 插件实现 | 插件实现 | 插件实现 | 插件实现 |
-| `/quota` | 订阅额度 | 订阅额度 | — | — |
+| `/quota` | 订阅额度 | 订阅额度 | `/usage` 额度 | — |
 | `/codex-plan` | — | 原生 Plan 模式 | — | — |
-| `/cli-compact` | 转发（已实测） | — | 转发（文档说明） | 转发（文档说明） |
-| `/config`、`/usage`、`/context`、`/cost` | 转发（已实测） | — | `/config`、`/usage`、`/context` 有文档 | `/config`、`/context`、`/cost` 有文档 |
-| `/status`、`/skills`、`/permissions`、`/help` | print 模式下**不可用** | `codex exec` 没有斜杠命令层 | 文档称 print 模式会展开 | 文档称 print 模式会展开 |
+| `/cli-compact` | 转发（已实测） | — | 转发（已实测） | 转发（文档说明） |
+| `/config`、`/usage`、`/context`、`/cost` | 转发（已实测） | — | `/config`、`/usage` 已实测；`/cost` 不是 `agy` 命令 | `/config`、`/context`、`/cost` 有文档 |
+| `/agents`、`/changelog`、`/credits`、`/hooks`、`/permissions`、`/plugin`、`/skills` | — | — | 转发（已实测） | — |
+| `/status`、`/context`、`/help` | print 模式下**不可用** | `codex exec` 没有斜杠命令层 | 不是 print 模式命令 | 文档称 print 模式会展开 |
 | `/compact` | DSH 自身压缩（不影响 CLI 上下文） | 同上 | 同上 | 同上 |
 | `/model` | DSH 模型选择器 | DSH 模型选择器 | DSH 模型选择器 | DSH 模型选择器 |
 
@@ -98,15 +100,21 @@ Bridge → 对应行）会显示 CLI 是否可运行、模型数量以及安装/
   `collaborationMode: { mode: "plan" }` 与只读沙箱，把规划项流式读回并写入
   `cliPlan` 会话投影；技能仍通过插件注入内容
   生效。
-- **Antigravity**：CLI 文档称 print 模式会展开斜杠命令，但本插件不附带 `agy`，
-  这部分只有文档依据，尚未验证。
+- **Antigravity**：针对 `agy 1.5.18` 实测。`/help` 报告的 print 模式命令为
+  `agents`、`changelog`、`config`、`credits`、`effort`、`hooks`、`permissions`、
+  `plugin`、`skills`、`usage`；`/compact` 会作为系统命令展开。`/status`、
+  `/context` 在 print 模式下不可用，因此不注册。模型 id（例如
+  `gemini-4-neon-high`）已带 effort；DSH 传显式 `--effort` 时插件会去掉后缀，
+  避免两者冲突。不带后缀的 `gemini-pro-orchestrator*` 不接受 `--effort`，因此
+  不提供 effort 选项。
 - **CodeBuddy**：2.185.0 会在 print 模式的 `init` 事件里列出可用的斜杠命令；转发
   名单来自该列表，实际执行尚未验证。print 模式无法完成交互式登录：先运行一次
   `codebuddy` 并输入 `/login`，或在 DSH 进程环境中设置 `CODEBUDDY_API_KEY`
   （中国版另需 `CODEBUDDY_INTERNET_ENVIRONMENT=internal`）。
 - **额度**：Codex app-server 返回 ChatGPT 套餐、5 小时/每周窗口以及历史/今日
   token 用量；Claude Code 读取 OAuth 用量接口，并追加本地 `/usage` 的 token 与
-  缓存计数。两种查询都不会启动模型回合。Claude Code 若使用自定义
+  缓存计数；Antigravity 解析 `agy /usage` 的 Gemini 与 Claude/GPT 模型分组及
+  5 小时/每周窗口。查询都不会启动模型回合。Claude Code 若使用自定义
   `ANTHROPIC_BASE_URL`，就没有可读的订阅额度，`/quota` 会说明原因，同时仍显示
   本地 token/缓存行。额度面板位于每个设置页底部。
 - `/compact` 压缩的是 DSH 会话日志；CLI 有自己的上下文存储。需要压缩 CLI 上下文时

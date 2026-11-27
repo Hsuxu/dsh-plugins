@@ -11,6 +11,7 @@ import {
   isClearResumeToken,
   isSessionId,
   listBackendSessions,
+  parseAntigravitySummaries,
   parseCodexIndex,
   resumeResultText,
 } from '../lib/sessions.js'
@@ -43,6 +44,30 @@ test('Codex index rows sort current workspace first', () => {
     ['current', true],
   ])
   assert.equal(rows[1].title, 'Current')
+})
+
+test('Antigravity summaries recover title, workspace and preview fallback', () => {
+  const rows = parseAntigravitySummaries([
+    {
+      conversation_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      title: 'Fix proxy',
+      preview: '/status',
+      workspace_uris: '["file:///C:/work"]',
+      last_modified_time: '2026-02-01 00:00:00+00:00',
+    },
+    {
+      conversation_id: 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff',
+      title: '',
+      preview: 'hello there',
+      workspace_uris: '["file:///C:/other"]',
+      last_modified_time: '2026-01-01 00:00:00+00:00',
+    },
+  ], 'C:\\work')
+  assert.equal(rows[0].title, 'Fix proxy')
+  assert.equal(rows[0].currentWorkspace, true)
+  assert.equal(rows[0].cwd, 'C:\\work')
+  assert.equal(rows[1].title, 'hello there')
+  assert.equal(rows[1].currentWorkspace, false)
 })
 
 test('Claude transcript folds a title from the first user prompt', () => {

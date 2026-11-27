@@ -627,7 +627,7 @@ export function apply(ctx, config = {}) {
     try {
       const onUpdate = (update) => writer.update(update)
       const stream = new STREAMS[backend.dialect](onUpdate, { inputIncludesCache: backend.inputIncludesCache })
-      const argv = backend.printArgv({ model, effort, cwd, resume, force: printForce(backend), prompt: text })
+      const argv = backend.printArgv({ model, effort, cwd, resume, force: printForce(backend), prompt: text, addDirs: files.length ? [tmpdir()] : [] })
       const outcome = await runPrint({
         argv,
         cwd,
