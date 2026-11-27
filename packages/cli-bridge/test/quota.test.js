@@ -1,12 +1,32 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { formatClaudeUsage, formatCodexRateLimits, queryQuota, QUOTA_SUPPORT } from '../lib/quota.js'
+import { formatAntigravityUsage, formatClaudeUsage, formatCodexRateLimits, queryQuota, QUOTA_SUPPORT } from '../lib/quota.js'
 
-test('subscription quota is exposed only for Codex and Claude Code', () => {
+test('subscription quota is exposed for Claude Code, Codex and Antigravity', () => {
   assert.equal(QUOTA_SUPPORT['claude-code'], true)
   assert.equal(QUOTA_SUPPORT.codex, true)
-  assert.equal(QUOTA_SUPPORT.antigravity, undefined)
+  assert.equal(QUOTA_SUPPORT.antigravity, true)
   assert.equal(QUOTA_SUPPORT.codebuddy, undefined)
+})
+
+test('formatAntigravityUsage reads agy /usage command data', () => {
+  const text = formatAntigravityUsage({
+    result: {
+      command: {
+        data: {
+          groups: [{
+            name: 'Gemini Models',
+            buckets: [
+              { name: 'Weekly Limit Remaining', window: 'weekly', remaining_fraction: 0.82, reset_time: '2026-12-03T07:18:53Z' },
+              { name: 'Five Hour Limit Remaining', window: '5h', remaining_fraction: 0.67, reset_time: '2026-11-27T07:59:37Z' },
+            ],
+          }],
+        },
+      },
+    },
+  })
+  assert.match(text, /Gemini Models: Weekly Limit Remaining: 82% left/)
+  assert.match(text, /Five Hour Limit Remaining: 67% left/)
 })
 
 test('formatClaudeUsage reads both documented payload shapes', () => {
@@ -80,7 +100,7 @@ test('formatCodexRateLimits accepts nested and flat snapshots', () => {
 })
 
 test('an unsupported backend returns a handled error', async () => {
-  const result = await queryQuota('antigravity')
+  const result = await queryQuota('codebuddy')
   assert.equal(result.ok, false)
   assert.match(result.error, /does not expose subscription quota/)
 })

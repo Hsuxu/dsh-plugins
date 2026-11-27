@@ -1,8 +1,9 @@
 import { createReadStream } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
+import { fileURLToPath } from 'node:url'
 
 /**
  * Local CLI sessions a cli mode can bind with `/resume`. Parsers never import
@@ -243,10 +244,67 @@ async function scanCodex(file, cwd) {
   }
 }
 
+/** Decode the first `file://` workspace URI Antigravity recorded. */
+function antigravityWorkspace(raw) {
+  try {
+    const uris = JSON.parse(String(raw ?? ''))
+    if (!Array.isArray(uris)) return undefined
+    for (const uri of uris) {
+      if (typeof uri !== 'string' || !uri.startsWith('file:')) continue
+      try {
+        return fileURLToPath(uri)
+      } catch {
+        continue
+      }
+    }
+  } catch {
+    // Empty or legacy values simply carry no workspace.
+  }
+  return undefined
+}
+
+/** Pure mapping of conversation_summaries rows, used by the picker and tests. */
+export function parseAntigravitySummaries(rows, cwd) {
+  const result = []
+  for (const row of rows ?? []) {
+    const id = row?.conversation_id
+    if (typeof id !== 'string' || !isSessionId(id)) continue
+    const title = oneLine(row.title || row.preview || `Antigravity session ${id.slice(0, 8)}`)
+    const dir = antigravityWorkspace(row.workspace_uris)
+    const updatedAt = Date.parse(String(row.last_modified_time ?? '').replace(' ', 'T')) || 0
+    result.push({ id, title, updatedAt, cwd: dir, currentWorkspace: samePath(dir, cwd) })
+  }
+  return result
+}
+
+async function readAntigravitySummaries(root, cwd) {
+  let DatabaseSync
+  try {
+    ;({ DatabaseSync } = await import('node:sqlite'))
+  } catch {
+    return []
+  }
+  let db
+  try {
+    db = new DatabaseSync(join(dirname(root), 'conversation_summaries.db'), { readOnly: true })
+    const rows = db.prepare('select conversation_id, title, preview, workspace_uris, last_modified_time from conversation_summaries').all()
+    return parseAntigravitySummaries(rows, cwd)
+  } catch {
+    return []
+  } finally {
+    try {
+      db?.close?.()
+    } catch {
+      // Best-effort read-only close.
+    }
+  }
+}
+
 /**
- * Antigravity keeps one SQLite database per conversation. The title lives in
- * the workspace index, so the picker shows the id and the file time instead of
- * opening the database; the CLI still receives its own `--conversation <id>`.
+ * Antigravity keeps one SQLite database per conversation and a summaries DB
+ * with title, preview, workspace URIs and last-modified time. Use the summaries
+ * to make `/resume` useful; fall back to the per-conversation files when the
+ * summaries database is unavailable.
  */
 async function scanAntigravity(root, cwd) {
   let names
@@ -255,11 +313,18 @@ async function scanAntigravity(root, cwd) {
   } catch {
     return []
   }
+  const summaries = await readAntigravitySummaries(root, cwd)
+  const byId = new Map(summaries.map((row) => [row.id, row]))
   const rows = []
   for (const name of names) {
     if (!name.endsWith('.db')) continue
     const id = name.slice(0, -'.db'.length)
     if (!isSessionId(id)) continue
+    if (byId.has(id)) {
+      rows.push(byId.get(id))
+      byId.delete(id)
+      continue
+    }
     try {
       const info = await stat(join(root, name))
       if (!info.isFile()) continue
@@ -295,6 +360,9 @@ function oneLine(text) {
 
 function samePath(left, right) {
   if (typeof left !== 'string' || typeof right !== 'string') return false
-  const norm = (value) => value.replace(/[\\/]+$/, '') || value
+  const norm = (value) => {
+    const normalized = value.replace(/\\/g, '/').replace(/\/+$/, '')
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+  }
   return norm(left) === norm(right)
 }

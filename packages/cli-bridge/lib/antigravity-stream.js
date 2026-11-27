@@ -16,14 +16,22 @@ const TOOL_KINDS = new Map([
   ['read_file', 'read'],
   ['view_file', 'read'],
   ['write_file', 'edit'],
+  ['write_to_file', 'edit'],
   ['edit_file', 'edit'],
   ['replace_file_content', 'edit'],
+  ['multi_replace_file_content', 'edit'],
   ['multi_edit', 'edit'],
+  ['sed_file', 'edit'],
   ['search', 'search'],
   ['grep', 'search'],
+  ['grep_search', 'search'],
   ['glob', 'search'],
+  ['find_by_name', 'search'],
+  ['list_dir', 'search'],
   ['web_fetch', 'fetch'],
   ['web_search', 'fetch'],
+  ['read_url_content', 'fetch'],
+  ['search_web', 'fetch'],
 ])
 
 function toolKind(name) {
@@ -50,12 +58,13 @@ function toolCall(step) {
   const info = step.tool_info ?? {}
   const name = step.tool_name || info.name || 'tool'
   const parameters = info.parameters && typeof info.parameters === 'object' ? info.parameters : {}
-  const path = parameters.file_path ?? parameters.path
+  const path = parameters.file_path ?? parameters.path ?? parameters.Path
+  const command = parameters.command ?? parameters.CommandLine
   return {
     sessionUpdate: 'tool_call',
     toolCallId: step.id,
     kind: toolKind(name),
-    title: typeof parameters.command === 'string' ? parameters.command : typeof path === 'string' ? `${name} ${path}` : name,
+    title: typeof command === 'string' ? command : typeof path === 'string' ? `${name} ${path}` : name,
     rawInput: parameters,
     ...(typeof path === 'string' ? { locations: [{ path }] } : {}),
     status: 'in_progress',

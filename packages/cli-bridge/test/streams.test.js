@@ -27,6 +27,18 @@ test('Antigravity stream translates text, tools and result', () => {
   assert.deepEqual(stream.usage(), { inputTokens: 10, outputTokens: 4, cacheReadTokens: 2, cacheWriteTokens: 0, reasoningTokens: 1 })
 })
 
+test('Antigravity maps write tools and uppercase parameter names', () => {
+  const updates = []
+  const stream = new AntigravityStream((update) => updates.push(update))
+  stream.push({ event: 'step_update', step_update: {
+    conversation_id: 'conv-1', step_index: 3, state: 'ACTIVE', step_type: 'tool', tool_name: 'write_to_file',
+    tool_info: { id: 'tool-1', name: 'write_to_file', parameters: { Path: 'C:\\w\\file.txt' } },
+  } })
+  assert.equal(updates[0].kind, 'edit')
+  assert.equal(updates[0].locations[0].path, 'C:\\w\\file.txt')
+  assert.match(updates[0].title, /file\.txt$/)
+})
+
 test('Antigravity failure carries the CLI error', () => {
   const stream = new AntigravityStream(() => {})
   stream.push({ event: 'result', result: { status: 'ERROR', error: { type: 'auth', message: 'authentication required' } } })

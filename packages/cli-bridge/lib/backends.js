@@ -57,6 +57,16 @@ const CODEX_MODELS = [
   { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', context: 272000, efforts: CODEX_LUNA_EFFORTS },
 ].map((model) => ({ ...model, efforts: model.efforts ?? EFFORTS, defaultEffort: 'high' }))
 
+const AGY_EFFORT_SUFFIX = /-(low|medium|high|xhigh|max)$/i
+
+/** A suffixed `agy models` id already encodes its effort; expose only that one. */
+function agyModelEffort(model) {
+  const suffix = AGY_EFFORT_SUFFIX.exec(model.id)
+  return suffix
+    ? { ...model, efforts: [suffix[1].toLowerCase()], defaultEffort: suffix[1].toLowerCase() }
+    : { ...model, efforts: EFFORTS, defaultEffort: 'high' }
+}
+
 /** Antigravity's account-aware list, used when `agy models` cannot answer. */
 const AGY_MODELS = [
   { id: 'gemini-4-neon-xhigh', name: 'Gemini 4 Neon (XHigh)' },
@@ -70,7 +80,7 @@ const AGY_MODELS = [
   { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High)' },
   { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash (Medium)' },
   { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro (High)' },
-].map((model) => ({ ...model, efforts: EFFORTS, defaultEffort: 'high' }))
+].map(agyModelEffort)
 
 /** CodeBuddy's account-aware aliases plus the model ids its `--help` lists. */
 const CODEBUDDY_MODELS = [
@@ -147,7 +157,7 @@ export function parseAgyModels(text) {
     if (/^(fetching|loading|models?|available|error|warning)\b/i.test(id)) continue
     models.push({ id, name: name.trim() })
   }
-  return models.map((model) => ({ ...model, efforts: EFFORTS, defaultEffort: 'high' }))
+  return models.map(agyModelEffort)
 }
 
 async function agyModels(bin, extra) {
@@ -280,18 +290,26 @@ export const BACKENDS = {
       stdin: 'none',
       models: agyModels,
       default: 'gemini-3.8-flash-high',
-      argv: (bin, extra, { model, effort, resume, force, prompt }) => [
-        bin,
-        ...extra,
-        '--output-format',
-        'stream-json',
-        ...(model ? ['--model', model] : []),
-        ...(effort ? ['--effort', effort] : []),
-        ...(resume ? ['--conversation', resume] : []),
-        ...(force ? ['--dangerously-skip-permissions'] : []),
-        '-p',
-        prompt,
-      ],
+      argv: (bin, extra, { model, effort, resume, force, prompt, addDirs }) => {
+        const suffix = model ? AGY_EFFORT_SUFFIX.exec(model) : null
+        // A model id such as gemini-4-neon-high already encodes effort; pairing it
+        // with a different --effort is rejected by agy. Strip the suffix and let
+        // the explicit effort win, or keep the suffixed id when no effort is set.
+        const argvModel = suffix && effort ? model.slice(0, suffix.index) : model
+        return [
+          bin,
+          ...extra,
+          '--output-format',
+          'stream-json',
+          ...(argvModel ? ['--model', argvModel] : []),
+          ...(effort ? ['--effort', effort] : []),
+          ...(addDirs?.length ? ['--add-dir', ...addDirs] : []),
+          ...(resume ? ['--conversation', resume] : []),
+          ...(force ? ['--dangerously-skip-permissions'] : []),
+          '-p',
+          prompt,
+        ]
+      },
     },
   },
 }
@@ -305,8 +323,8 @@ export const BACKENDS = {
  *   JSON result). /status, /skills, /permissions and /help answer "isn't
  *   available in this environment", so they are not registered.
  * - codex: `codex exec` has no slash-command layer; only /agent forwarding.
- * - antigravity: documented as expanding slash commands in print mode; not
- *   verified because this plugin does not bundle the `agy` CLI.
+ * - antigravity: verified against agy 1.5.18 `agy -p /help`; /status and
+ *   /context are not print-mode commands, so they are not registered.
  * - codebuddy: command names read from the print-mode `init` event; execution
  *   is not verified.
  */
@@ -322,9 +340,9 @@ export const COMMAND_SUPPORT = {
     source: 'codex exec has no slash-command layer',
   },
   antigravity: {
-    native: ['config', 'skills', 'agents', 'permissions', 'context', 'diff', 'teamwork', 'browser', 'usage', 'credits', 'changelog', 'title', 'statusline', 'voice', 'fork', 'branch', 'effort', 'status'],
+    native: ['agents', 'changelog', 'config', 'credits', 'effort', 'hooks', 'permissions', 'plugin', 'skills', 'usage'],
     compact: true,
-    source: 'documented, not verified (agy not bundled)',
+    source: 'verified against agy 1.5.18 print mode',
   },
   codebuddy: {
     native: ['config', 'context', 'cost', 'skills', 'status', 'permissions', 'effort', 'review', 'init', 'agents', 'doctor', 'stats'],

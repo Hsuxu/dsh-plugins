@@ -28,9 +28,13 @@ test('each print backend builds its own argv', () => {
   const agy = resolveBackend('antigravity')
   const agyArgv = agy.printArgv({ model: 'gemini-4-neon-high', effort: 'xhigh', resume: 'uuid', force: true, prompt: 'hi' })
   assert.ok(agyArgv.includes('--output-format'))
+  assert.equal(agyArgv[agyArgv.indexOf('--model') + 1], 'gemini-4-neon')
   assert.equal(agyArgv[agyArgv.indexOf('--conversation') + 1], 'uuid')
   assert.equal(agyArgv[agyArgv.indexOf('--effort') + 1], 'xhigh')
   assert.equal(agyArgv.at(-1), 'hi')
+  const agyBare = agy.printArgv({ model: 'gemini-4-neon-high', prompt: 'hi' })
+  assert.equal(agyBare[agyBare.indexOf('--model') + 1], 'gemini-4-neon-high')
+  assert.ok(!agyBare.includes('--effort'))
 
   const codebuddy = resolveBackend('codebuddy')
   const codebuddyArgv = codebuddy.printArgv({ model: 'default-model', effort: 'high', resume: 'sid', force: true, prompt: 'hello' })
@@ -58,6 +62,10 @@ test('native command whitelists never shadow DSH commands', () => {
   assert.equal(COMMAND_SUPPORT['claude-code'].compact, true)
   assert.ok(nativeCommands('claude-code').includes('config'))
   assert.ok(!nativeCommands('claude-code').includes('status'))
+  assert.ok(nativeCommands('antigravity').includes('usage'))
+  assert.ok(nativeCommands('antigravity').includes('config'))
+  assert.ok(!nativeCommands('antigravity').includes('status'))
+  assert.ok(!nativeCommands('antigravity').includes('context'))
   assert.ok(nativeCommands('codebuddy').includes('config'))
   assert.ok(nativeCommands('codebuddy').includes('status'))
   assert.equal(COMMAND_SUPPORT.codebuddy.compact, true)
@@ -71,7 +79,8 @@ test('parseAgyModels reads slug and display name', () => {
     ['gemini-4-neon-xhigh', 'Gemini 4 Neon (XHigh)'],
     ['gemini-3.8-flash-high', 'Gemini 3.8 Flash (High)'],
   ])
-  assert.equal(models[0].defaultEffort, 'high')
+  assert.equal(models[0].defaultEffort, 'xhigh')
+  assert.deepEqual(models[0].efforts, ['xhigh'])
 })
 
 test('auth errors are recognized', () => {
